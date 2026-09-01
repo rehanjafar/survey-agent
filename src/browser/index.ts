@@ -1,7 +1,8 @@
-export { PlaywrightChromiumBrowser } from "./playwright-chromium-browser.js";
+export { isLoopbackCdpEndpoint, PlaywrightChromiumBrowser } from "./playwright-chromium-browser.js";
 export { isAllowedUrl } from "./url-policy.js";
 export type {
   BrowserAutomationDriver,
+  BrowserConnectionMode,
   BrowserSession,
   BrowserSessionOptions,
   ChromiumBrowserOptions,

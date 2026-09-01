@@ -6,6 +6,7 @@ import type {
   BrowserAutomationDriver,
   BrowserSession,
   BrowserSessionOptions,
+  BrowserConnectionMode,
   ChromiumBrowserOptions,
   InteractiveControl,
   InteractiveControlKind,
@@ -21,6 +22,8 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
   private readonly allowedDomains: ReadonlySet<string>;
   private readonly headless: boolean;
   private readonly maxPageTextLength: number;
+  private readonly mode: BrowserConnectionMode;
+  private readonly cdpEndpoint: string | undefined;
 
   public constructor(options: ChromiumBrowserOptions = {}) {
     this.allowedDomains = new Set(
@@ -28,10 +31,21 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
     );
     this.headless = options.headless ?? true;
     this.maxPageTextLength = options.maxPageTextLength ?? DEFAULT_MAX_PAGE_TEXT_LENGTH;
+    this.mode = options.mode ?? "managed_chromium";
+    this.cdpEndpoint = options.cdpEndpoint;
   }
 
   public async launch(): Promise<void> {
     if (this.browser) {
+      return;
+    }
+
+    if (this.mode === "attached_chrome") {
+      if (!this.cdpEndpoint || !isLoopbackCdpEndpoint(this.cdpEndpoint)) {
+        throw new Error("attached_chrome requires a loopback-only CDP endpoint.");
+      }
+
+      this.browser = await chromium.connectOverCDP(this.cdpEndpoint);
       return;
     }
 
@@ -42,21 +56,31 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
     await this.launch();
 
     const reuseContext = options.reuseContext ?? true;
+    if (this.mode === "attached_chrome" && !reuseContext) {
+      throw new Error("attached_chrome sessions must reuse Chrome's existing default context.");
+    }
+
     const context = reuseContext
       ? await this.getOrCreateSharedContext()
       : await this.getBrowser().newContext();
-    const page = await context.newPage();
+    const existingPage = this.mode === "attached_chrome";
+    const page = existingPage
+      ? this.findAttachedPage(context, options.existingPageUrl)
+      : await context.newPage();
 
     return new PlaywrightBrowserSession(
       page,
       this.allowedDomains,
       this.maxPageTextLength,
-      !reuseContext
+      !reuseContext,
+      !existingPage
     );
   }
 
   public async close(): Promise<void> {
-    await this.sharedContext?.close();
+    if (this.mode === "managed_chromium") {
+      await this.sharedContext?.close();
+    }
     this.sharedContext = undefined;
     await this.browser?.close();
     this.browser = undefined;
@@ -72,10 +96,30 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
 
   private async getOrCreateSharedContext(): Promise<BrowserContext> {
     if (!this.sharedContext) {
-      this.sharedContext = await this.getBrowser().newContext();
+      if (this.mode === "attached_chrome") {
+        const context = this.getBrowser().contexts()[0];
+        if (!context) {
+          throw new Error("No default Chrome context is available through the CDP connection.");
+        }
+        this.sharedContext = context;
+      } else {
+        this.sharedContext = await this.getBrowser().newContext();
+      }
     }
 
     return this.sharedContext;
+  }
+
+  private findAttachedPage(context: BrowserContext, existingPageUrl?: string): Page {
+    const page = existingPageUrl
+      ? context.pages().find((candidate) => pageMatchesUrl(candidate.url(), existingPageUrl))
+      : context.pages()[0];
+
+    if (!page) {
+      throw new Error("No matching existing Chrome tab is available through the CDP connection.");
+    }
+
+    return page;
   }
 }
 
@@ -84,7 +128,8 @@ class PlaywrightBrowserSession implements BrowserSession {
     private readonly page: Page,
     private readonly allowedDomains: ReadonlySet<string>,
     private readonly maxPageTextLength: number,
-    private readonly ownsContext: boolean
+    private readonly ownsContext: boolean,
+    private readonly ownsPage: boolean
   ) {}
 
   public async navigate(url: string): Promise<PageState> {
@@ -131,7 +176,11 @@ class PlaywrightBrowserSession implements BrowserSession {
       };
 
       const kindFor = (element: Element): InteractiveControlKind => {
-        if (element instanceof HTMLButtonElement) {
+        if (
+          element instanceof HTMLButtonElement ||
+          element instanceof HTMLAnchorElement ||
+          element.getAttribute("role") === "button"
+        ) {
           return "button";
         }
         if (element instanceof HTMLSelectElement) {
@@ -161,27 +210,43 @@ class PlaywrightBrowserSession implements BrowserSession {
       };
 
       const controls = Array.from(
-        document.querySelectorAll<
-          HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement
-        >("input, select, textarea, button")
+        document.querySelectorAll<HTMLElement>(
+          "input, select, textarea, button, a[href], [role='button']"
+        )
       )
-        .filter((element) => element.type !== "hidden")
+        .filter((element) => !(element instanceof HTMLInputElement && element.type === "hidden"))
         .map((element): InteractiveControl => {
           const isSelect = element instanceof HTMLSelectElement;
-          const labelledElement = element instanceof HTMLButtonElement ? undefined : element;
+          const labelledElement =
+            element instanceof HTMLInputElement ||
+            element instanceof HTMLSelectElement ||
+            element instanceof HTMLTextAreaElement
+              ? element
+              : undefined;
+          const formControl =
+            element instanceof HTMLInputElement ||
+            element instanceof HTMLSelectElement ||
+            element instanceof HTMLTextAreaElement ||
+            element instanceof HTMLButtonElement
+              ? element
+              : undefined;
 
           return {
             kind: kindFor(element),
             selector: selectorFor(element),
             id: element.id,
             name: element.getAttribute("name") ?? "",
-            label: labelledElement ? labelFor(labelledElement) : element.innerText.trim(),
+            label: labelledElement
+              ? labelFor(labelledElement)
+              : element.innerText.trim() || element.textContent?.trim() || "",
             ariaLabel: element.getAttribute("aria-label") ?? "",
             placeholder: element.getAttribute("placeholder") ?? "",
-            value: element.value,
+            value: labelledElement?.value ?? element.getAttribute("value") ?? "",
+            href: element instanceof HTMLAnchorElement ? element.href : "",
             checked: element instanceof HTMLInputElement ? element.checked : false,
-            disabled: element.disabled,
-            required: "required" in element && element.required,
+            disabled:
+              (formControl?.disabled ?? false) || element.getAttribute("aria-disabled") === "true",
+            required: labelledElement ? labelledElement.required : false,
             options: isSelect
               ? Array.from(element.options).map((option) => ({
                   label: option.label,
@@ -259,7 +324,9 @@ class PlaywrightBrowserSession implements BrowserSession {
 
   public async close(): Promise<void> {
     const context = this.page.context();
-    await this.page.close();
+    if (this.ownsPage) {
+      await this.page.close();
+    }
     if (this.ownsContext) {
       await context.close();
     }
@@ -269,5 +336,27 @@ class PlaywrightBrowserSession implements BrowserSession {
     if (this.allowedDomains.size > 0 && !isAllowedUrl(url, this.allowedDomains)) {
       throw new Error(`Navigation blocked: ${url} is not on the configured allowlist.`);
     }
+  }
+}
+
+export function isLoopbackCdpEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function pageMatchesUrl(pageUrl: string, targetUrl: string): boolean {
+  try {
+    const page = new URL(pageUrl);
+    const target = new URL(targetUrl);
+    return page.origin === target.origin && page.pathname === target.pathname;
+  } catch {
+    return false;
   }
 }

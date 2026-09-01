@@ -17,6 +17,7 @@ export interface InteractiveControl {
   readonly ariaLabel: string;
   readonly placeholder: string;
   readonly value: string;
+  readonly href: string;
   readonly checked: boolean;
   readonly disabled: boolean;
   readonly required: boolean;
@@ -52,6 +53,7 @@ export interface BrowserSession {
 
 export interface BrowserSessionOptions {
   readonly reuseContext?: boolean;
+  readonly existingPageUrl?: string;
 }
 
 export interface BrowserAutomationDriver {
@@ -62,6 +64,10 @@ export interface BrowserAutomationDriver {
 
 export interface ChromiumBrowserOptions {
   readonly allowedDomains?: readonly string[];
+  readonly cdpEndpoint?: string;
   readonly headless?: boolean;
   readonly maxPageTextLength?: number;
+  readonly mode?: BrowserConnectionMode;
 }
+
+export type BrowserConnectionMode = "attached_chrome" | "managed_chromium";
