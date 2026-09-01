@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "dotenv": "^16.6.1",
+    "playwright": "^1.57.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
