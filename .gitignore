@@ -1,0 +1,36 @@
+# Dependencies and build outputs
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+credentials.json
+service-account.json
+secrets.json
+secret.txt
+secrets.txt
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime data and diagnostics
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+logs/
+screenshots/
+profiles/
+playwright-report/
+test-results/
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
+*.swp
