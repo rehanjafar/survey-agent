@@ -27,7 +27,7 @@ describe("EurekaSurveyPlatformAdapter", () => {
       "utf8"
     );
     server.on("request", (request, response) => {
-      response.writeHead(200, { "content-type": "text/html" });
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       response.end(
         request.url === "/survey/high"
           ? "<title>Mock survey</title><p>Selected high-reward survey</p>"

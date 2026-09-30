@@ -4,7 +4,7 @@ A local, auditable foundation for a browser-based survey agent operating only on
 
 ## Current milestone
 
-This first milestone provides only a runnable TypeScript foundation: project configuration, environment validation, a small CLI health check, and automated tests. It deliberately does **not** launch a browser, access a survey site, persist data, or call an LLM.
+The reusable core includes an allowlisted Playwright Chromium driver, generic active-question extraction, normalized question fingerprints, SQLite profile/answer memory, cache-first answer decisions, structured OpenAI/Anthropic provider adapters, and a structured-action executor. Browser integration tests remain local-only.
 
 ## Prerequisites
 
