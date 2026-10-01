@@ -1,0 +1,22 @@
+name: Cross-platform checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install --global corepack
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm exec playwright install --with-deps chromium
+      - run: corepack pnpm check
