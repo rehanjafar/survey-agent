@@ -62,6 +62,7 @@ export interface EurekaAuditLogger {
 }
 
 export interface EurekaSurveyPlatformOptions {
+  readonly rankBy?: "reward" | "reward_per_minute";
   readonly allowedHosts?: readonly string[];
   readonly auditLogger: EurekaAuditLogger;
   readonly startUrl: string;

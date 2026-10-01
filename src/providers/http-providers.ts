@@ -1,84 +1,126 @@
 import { z } from "zod";
+import { instructions, parseDecision, wireJsonSchema } from "./decision-schema.js";
 import type { LlmProvider, ProviderDecision, ProviderQuestion } from "./types.js";
-const decisionSchema = z.object({
-  selectedOption: z.string().optional(),
-  value: z.string().optional(),
-  confidence: z.number().min(0).max(1),
-  reason: z.string().max(500)
-});
-const instructions =
-  "Return only JSON matching {selectedOption?:string,value?:string,confidence:number,reason:string}. Choose an option exactly when options are present. Never invent user facts.";
 abstract class JsonHttpProvider implements LlmProvider {
-  public constructor(private readonly apiKey: string) {}
+  public constructor(
+    protected readonly key: string,
+    protected readonly model: string,
+    private readonly request: typeof fetch = fetch
+  ) {}
   public async decide(question: ProviderQuestion): Promise<ProviderDecision> {
-    const response = await fetch(this.endpoint(), {
+    const response = await this.request(this.endpoint(), {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify(this.body(question))
+      body: JSON.stringify(this.body(question)),
+      signal: AbortSignal.timeout(45_000)
     });
-    if (!response.ok) throw new Error(`LLM request failed with HTTP ${response.status}.`);
-    const parsed = decisionSchema.parse(this.extract(await response.json()));
+    if (!response.ok)
+      throw new Error(
+        `Provider returned HTTP ${response.status}. Check configuration, quota and connectivity.`
+      );
+    const raw = parseDecision(this.extract(await response.json()));
     return {
-      ...(parsed.selectedOption ? { selectedOption: parsed.selectedOption } : {}),
-      ...(parsed.value ? { value: parsed.value } : {}),
-      confidence: parsed.confidence,
-      reason: parsed.reason
+      confidence: raw.confidence,
+      reason: raw.reason,
+      ...(raw.selectedOption !== undefined ? { selectedOption: raw.selectedOption } : {}),
+      ...(raw.selectedOptions !== undefined ? { selectedOptions: raw.selectedOptions } : {}),
+      ...(raw.value !== undefined ? { value: raw.value } : {}),
+      ...(raw.matrix !== undefined ? { matrix: raw.matrix } : {})
     };
   }
   protected abstract endpoint(): string;
   protected abstract headers(): Record<string, string>;
   protected abstract body(question: ProviderQuestion): unknown;
   protected abstract extract(response: unknown): unknown;
-  protected payload(question: ProviderQuestion): string {
-    return JSON.stringify(question);
-  }
-  protected get key(): string {
-    return this.apiKey;
-  }
 }
 export class OpenAIProvider extends JsonHttpProvider {
-  protected endpoint(): string {
+  public constructor(key: string, model = "gpt-4.1-mini", request: typeof fetch = fetch) {
+    super(key, model, request);
+  }
+  protected endpoint() {
     return "https://api.openai.com/v1/responses";
   }
-  protected headers(): Record<string, string> {
+  protected headers() {
     return { authorization: `Bearer ${this.key}`, "content-type": "application/json" };
   }
-  protected body(question: ProviderQuestion): unknown {
+  protected body(question: ProviderQuestion) {
     return {
-      model: "gpt-4.1-mini",
-      input: [
-        { role: "system", content: instructions },
-        { role: "user", content: this.payload(question) }
-      ],
-      text: { format: { type: "json_object" } }
+      model: this.model,
+      store: false,
+      max_output_tokens: 1200,
+      instructions,
+      input: JSON.stringify(question),
+      text: {
+        format: { type: "json_schema", name: "survey_answer", strict: true, schema: wireJsonSchema }
+      }
     };
   }
   protected extract(response: unknown): unknown {
-    const item = response as { output_text?: string };
-    return JSON.parse(item.output_text ?? "");
+    const result = z
+      .object({
+        status: z.literal("completed"),
+        output: z.array(
+          z.object({
+            type: z.string(),
+            content: z.array(z.object({ type: z.string(), text: z.string().optional() })).optional()
+          })
+        )
+      })
+      .parse(response);
+    const parts = result.output.flatMap((item) => item.content ?? []);
+    if (parts.some((part) => part.type === "refusal"))
+      throw new Error("Provider declined the question.");
+    return JSON.parse(
+      parts
+        .filter((part) => part.type === "output_text")
+        .map((part) => part.text ?? "")
+        .join("")
+    );
   }
 }
 export class AnthropicProvider extends JsonHttpProvider {
-  protected endpoint(): string {
+  public constructor(key: string, model = "claude-haiku-4-5", request: typeof fetch = fetch) {
+    super(key, model, request);
+  }
+  protected endpoint() {
     return "https://api.anthropic.com/v1/messages";
   }
-  protected headers(): Record<string, string> {
+  protected headers() {
     return {
       "x-api-key": this.key,
       "anthropic-version": "2023-06-01",
       "content-type": "application/json"
     };
   }
-  protected body(question: ProviderQuestion): unknown {
+  protected body(question: ProviderQuestion) {
     return {
-      model: "claude-haiku-4-5",
-      max_tokens: 250,
+      model: this.model,
+      max_tokens: 1200,
       system: instructions,
-      messages: [{ role: "user", content: this.payload(question) }]
+      tools: [
+        {
+          name: "answer_survey",
+          description: "Return the structured survey decision",
+          input_schema: wireJsonSchema
+        }
+      ],
+      tool_choice: { type: "tool", name: "answer_survey" },
+      messages: [{ role: "user", content: JSON.stringify(question) }]
     };
   }
   protected extract(response: unknown): unknown {
-    const item = response as { content?: Array<{ text?: string }> };
-    return JSON.parse(item.content?.[0]?.text ?? "");
+    const result = z
+      .object({
+        stop_reason: z.literal("tool_use"),
+        content: z.array(
+          z.object({ type: z.string(), name: z.string().optional(), input: z.unknown().optional() })
+        )
+      })
+      .parse(response);
+    const answers = result.content.filter(
+      (item) => item.type === "tool_use" && item.name === "answer_survey"
+    );
+    if (answers.length !== 1) throw new Error("Expected one structured answer.");
+    return answers[0]?.input;
   }
 }

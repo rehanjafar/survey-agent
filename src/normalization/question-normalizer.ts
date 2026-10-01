@@ -1,14 +1,13 @@
 import { createHash } from "node:crypto";
 export function normalizeText(value: string): string {
-  return value
-    .toLocaleLowerCase("en-US")
-    .replace(/\s+/g, " ")
-    .replace(/[^\p{L}\p{N} ]/gu, "")
-    .trim();
+  return value.normalize("NFKC").toLocaleLowerCase("en-US").replace(/\s+/g, " ").trim();
 }
-export function questionFingerprint(prompt: string, optionLabels: readonly string[]): string {
+export function questionFingerprint(
+  prompt: string,
+  optionLabels: readonly string[],
+  context = ""
+): string {
   return createHash("sha256")
-    .update([normalizeText(prompt), ...optionLabels.map(normalizeText)].join("|"))
-    .digest("hex")
-    .slice(0, 32);
+    .update(JSON.stringify([normalizeText(prompt), optionLabels.map(normalizeText), context]))
+    .digest("hex");
 }
