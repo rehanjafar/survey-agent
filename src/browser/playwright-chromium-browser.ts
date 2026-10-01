@@ -1,360 +1,213 @@
 import { chromium } from "playwright";
-import type { Browser, BrowserContext, Page } from "playwright";
-
+import type { Browser, BrowserContext, Page, Route } from "playwright";
 import { isAllowedUrl } from "./url-policy.js";
+import { snapshot } from "./snapshot.js";
 import type {
   BrowserAutomationDriver,
   BrowserSession,
   BrowserSessionOptions,
-  BrowserConnectionMode,
   ChromiumBrowserOptions,
-  InteractiveControl,
-  InteractiveControlKind,
   NavigationState,
   PageState
 } from "./types.js";
 
-const DEFAULT_MAX_PAGE_TEXT_LENGTH = 12_000;
-
 export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
   private browser: Browser | undefined;
-  private sharedContext: BrowserContext | undefined;
-  private readonly allowedDomains: ReadonlySet<string>;
-  private readonly headless: boolean;
-  private readonly maxPageTextLength: number;
-  private readonly mode: BrowserConnectionMode;
-  private readonly cdpEndpoint: string | undefined;
-
-  public constructor(options: ChromiumBrowserOptions = {}) {
-    this.allowedDomains = new Set(
-      options.allowedDomains?.map((domain) => domain.toLowerCase()) ?? []
+  private context: BrowserContext | undefined;
+  private readonly allowed: ReadonlySet<string>;
+  public constructor(private readonly options: ChromiumBrowserOptions = {}) {
+    this.allowed = new Set(
+      options.allowedDomains?.map((domain) => domain.toLowerCase()) ?? ["localhost", "127.0.0.1"]
     );
-    this.headless = options.headless ?? true;
-    this.maxPageTextLength = options.maxPageTextLength ?? DEFAULT_MAX_PAGE_TEXT_LENGTH;
-    this.mode = options.mode ?? "managed_chromium";
-    this.cdpEndpoint = options.cdpEndpoint;
   }
-
   public async launch(): Promise<void> {
-    if (this.browser) {
-      return;
-    }
-
-    if (this.mode === "attached_chrome") {
-      if (!this.cdpEndpoint || !isLoopbackCdpEndpoint(this.cdpEndpoint)) {
+    if (this.browser || this.context) return;
+    if (this.options.mode === "attached_chrome") {
+      if (!this.options.cdpEndpoint || !isLoopbackCdpEndpoint(this.options.cdpEndpoint))
         throw new Error("attached_chrome requires a loopback-only CDP endpoint.");
-      }
-
-      this.browser = await chromium.connectOverCDP(this.cdpEndpoint);
-      return;
+      this.browser = await chromium.connectOverCDP(this.options.cdpEndpoint);
+      this.context = this.browser.contexts()[0];
+      if (!this.context) throw new Error("No existing Chrome context.");
+    } else if (this.options.userDataDirectory) {
+      this.context = await chromium.launchPersistentContext(this.options.userDataDirectory, {
+        headless: this.options.headless ?? true,
+        serviceWorkers: "block",
+        acceptDownloads: false
+      });
+    } else {
+      this.browser = await chromium.launch({ headless: this.options.headless ?? true });
     }
-
-    this.browser = await chromium.launch({ headless: this.headless });
   }
-
   public async createSession(options: BrowserSessionOptions = {}): Promise<BrowserSession> {
     await this.launch();
-
-    const reuseContext = options.reuseContext ?? true;
-    if (this.mode === "attached_chrome" && !reuseContext) {
+    if (this.options.mode === "attached_chrome" && options.reuseContext === false)
       throw new Error("attached_chrome sessions must reuse Chrome's existing default context.");
+    let context = this.context;
+    if (!context || options.reuseContext === false) {
+      if (!this.browser) throw new Error("Persistent browser only supports its existing context.");
+      context = await this.browser.newContext({ serviceWorkers: "block", acceptDownloads: false });
+      if (options.reuseContext !== false) this.context = context;
     }
-
-    const context = reuseContext
-      ? await this.getOrCreateSharedContext()
-      : await this.getBrowser().newContext();
-    const existingPage = this.mode === "attached_chrome";
-    const page = existingPage
-      ? this.findAttachedPage(context, options.existingPageUrl)
+    const attached = this.options.mode === "attached_chrome";
+    const page = attached
+      ? options.existingPageUrl
+        ? context
+            .pages()
+            .find((candidate) => pageMatchesUrl(candidate.url(), options.existingPageUrl!))
+        : context.pages()[0]
       : await context.newPage();
-
-    return new PlaywrightBrowserSession(
+    if (!page) throw new Error("No matching existing Chrome tab.");
+    const session = new PlaywrightBrowserSession(
       page,
-      this.allowedDomains,
-      this.maxPageTextLength,
-      !reuseContext,
-      !existingPage
+      this.allowed,
+      this.options.maxPageTextLength ?? 12000,
+      options.reuseContext === false,
+      !attached
     );
+    await session.installPolicy();
+    return session;
   }
-
   public async close(): Promise<void> {
-    if (this.mode === "managed_chromium") {
-      await this.sharedContext?.close();
-    }
-    this.sharedContext = undefined;
+    if (this.options.mode !== "attached_chrome") await this.context?.close();
+    this.context = undefined;
     await this.browser?.close();
     this.browser = undefined;
   }
-
-  private getBrowser(): Browser {
-    if (!this.browser) {
-      throw new Error("Browser has not been launched.");
-    }
-
-    return this.browser;
-  }
-
-  private async getOrCreateSharedContext(): Promise<BrowserContext> {
-    if (!this.sharedContext) {
-      if (this.mode === "attached_chrome") {
-        const context = this.getBrowser().contexts()[0];
-        if (!context) {
-          throw new Error("No default Chrome context is available through the CDP connection.");
-        }
-        this.sharedContext = context;
-      } else {
-        this.sharedContext = await this.getBrowser().newContext();
-      }
-    }
-
-    return this.sharedContext;
-  }
-
-  private findAttachedPage(context: BrowserContext, existingPageUrl?: string): Page {
-    const page = existingPageUrl
-      ? context.pages().find((candidate) => pageMatchesUrl(candidate.url(), existingPageUrl))
-      : context.pages()[0];
-
-    if (!page) {
-      throw new Error("No matching existing Chrome tab is available through the CDP connection.");
-    }
-
-    return page;
-  }
 }
-
 class PlaywrightBrowserSession implements BrowserSession {
+  private blocked = false;
   public constructor(
     private readonly page: Page,
-    private readonly allowedDomains: ReadonlySet<string>,
-    private readonly maxPageTextLength: number,
+    private readonly allowed: ReadonlySet<string>,
+    private readonly maxText: number,
     private readonly ownsContext: boolean,
     private readonly ownsPage: boolean
   ) {}
-
+  private readonly route = async (route: Route) => {
+    const request = route.request();
+    if (request.isNavigationRequest()) {
+      const target = request.frame().page();
+      const related = target === this.page || (await target.opener()) === this.page;
+      if (related && (target !== this.page || !isAllowedUrl(request.url(), this.allowed))) {
+        this.blocked = true;
+        await route.abort("blockedbyclient");
+        return;
+      }
+    }
+    await route.fallback();
+  };
+  private readonly popup = (page: Page) => {
+    this.blocked = true;
+    void page.close().catch(() => undefined);
+  };
+  public async installPolicy() {
+    this.page.setDefaultTimeout(10000);
+    this.page.setDefaultNavigationTimeout(30000);
+    await this.page.context().route("**/*", this.route);
+    this.page.on("popup", this.popup);
+  }
+  private check() {
+    if (this.blocked)
+      throw new Error(
+        "Unexpected navigation or popup was blocked. Start a new session after reviewing the allowed domains."
+      );
+    if (this.page.url() !== "about:blank") this.assertAllowed(this.page.url());
+  }
   public async navigate(url: string): Promise<PageState> {
-    this.assertUrlAllowed(url);
+    this.assertAllowed(url);
     await this.page.goto(url, { waitUntil: "domcontentloaded" });
     return this.capturePageState();
   }
-
   public async capturePageState(): Promise<PageState> {
-    return this.page.evaluate((maxPageTextLength) => {
-      const selectorFor = (element: Element): string => {
-        if (element.id) {
-          return `#${CSS.escape(element.id)}`;
-        }
-
-        const parent = element.parentElement;
-        const tagName = element.tagName.toLowerCase();
-        if (!parent) {
-          return tagName;
-        }
-
-        const siblingIndex = Array.from(parent.children)
-          .filter((sibling) => sibling.tagName === element.tagName)
-          .indexOf(element);
-
-        return `${selectorFor(parent)} > ${tagName}:nth-of-type(${siblingIndex + 1})`;
-      };
-
-      const labelFor = (
-        element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-      ): string => {
-        const associatedLabels = Array.from(element.labels ?? []).map((label) =>
-          label.innerText.trim()
-        );
-        const closestLabel = element.closest("label")?.innerText.trim();
-        return [
-          ...associatedLabels,
-          closestLabel,
-          element.getAttribute("aria-label"),
-          element.getAttribute("placeholder")
-        ]
-          .filter((value): value is string => Boolean(value))
-          .join(" ");
-      };
-
-      const kindFor = (element: Element): InteractiveControlKind => {
-        if (
-          element instanceof HTMLButtonElement ||
-          element instanceof HTMLAnchorElement ||
-          element.getAttribute("role") === "button"
-        ) {
-          return "button";
-        }
-        if (element instanceof HTMLSelectElement) {
-          return "select";
-        }
-        if (element instanceof HTMLTextAreaElement) {
-          return "textarea";
-        }
-        if (!(element instanceof HTMLInputElement)) {
-          return "other";
-        }
-
-        switch (element.type) {
-          case "checkbox":
-            return "checkbox";
-          case "radio":
-            return "radio";
-          case "number":
-            return "number";
-          case "button":
-          case "submit":
-          case "reset":
-            return "button";
-          default:
-            return "text";
-        }
-      };
-
-      const controls = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          "input, select, textarea, button, a[href], [role='button']"
-        )
-      )
-        .filter((element) => !(element instanceof HTMLInputElement && element.type === "hidden"))
-        .map((element): InteractiveControl => {
-          const isSelect = element instanceof HTMLSelectElement;
-          const labelledElement =
-            element instanceof HTMLInputElement ||
-            element instanceof HTMLSelectElement ||
-            element instanceof HTMLTextAreaElement
-              ? element
-              : undefined;
-          const formControl =
-            element instanceof HTMLInputElement ||
-            element instanceof HTMLSelectElement ||
-            element instanceof HTMLTextAreaElement ||
-            element instanceof HTMLButtonElement
-              ? element
-              : undefined;
-
-          return {
-            kind: kindFor(element),
-            selector: selectorFor(element),
-            id: element.id,
-            name: element.getAttribute("name") ?? "",
-            label: labelledElement
-              ? labelFor(labelledElement)
-              : element.innerText.trim() || element.textContent?.trim() || "",
-            ariaLabel: element.getAttribute("aria-label") ?? "",
-            placeholder: element.getAttribute("placeholder") ?? "",
-            value: labelledElement?.value ?? element.getAttribute("value") ?? "",
-            href: element instanceof HTMLAnchorElement ? element.href : "",
-            checked: element instanceof HTMLInputElement ? element.checked : false,
-            disabled:
-              (formControl?.disabled ?? false) || element.getAttribute("aria-disabled") === "true",
-            required: labelledElement ? labelledElement.required : false,
-            options: isSelect
-              ? Array.from(element.options).map((option) => ({
-                  label: option.label,
-                  value: option.value,
-                  disabled: option.disabled,
-                  selected: option.selected
-                }))
-              : []
-          };
-        });
-
-      return {
-        url: window.location.href,
-        title: document.title,
-        text: document.body?.innerText.trim().slice(0, maxPageTextLength) ?? "",
-        controls
-      };
-    }, this.maxPageTextLength);
+    this.check();
+    return this.page.evaluate(snapshot, this.maxText);
   }
-
   public async click(selector: string): Promise<void> {
-    await this.page.locator(selector).click();
+    this.check();
+    const locator = this.page.locator(selector);
+    const href = await locator.getAttribute("href");
+    if (href) this.assertAllowed(new URL(href, this.page.url()).href);
+    await locator.click();
+    this.check();
   }
-
   public async type(selector: string, value: string): Promise<void> {
-    await this.page.locator(selector).fill(value);
+    this.check();
+    const locator = this.page.locator(selector);
+    await locator.fill(value);
+    if ((await locator.inputValue()) !== value) throw new Error("Input verification failed.");
   }
-
   public async selectDropdown(selector: string, value: string): Promise<void> {
-    await this.page.locator(selector).selectOption(value);
+    this.check();
+    const locator = this.page.locator(selector);
+    await locator.selectOption(value);
+    if ((await locator.inputValue()) !== value) throw new Error("Selection verification failed.");
   }
-
   public async selectRadio(selector: string): Promise<void> {
-    await this.page.locator(selector).check();
+    this.check();
+    const locator = this.page.locator(selector);
+    await locator.check();
+    if (!(await locator.isChecked())) throw new Error("Radio verification failed.");
   }
-
   public async setCheckbox(selector: string, checked: boolean): Promise<void> {
-    const control = this.page.locator(selector);
-    if (checked) {
-      await control.check();
-      return;
-    }
-
-    await control.uncheck();
+    this.check();
+    const locator = this.page.locator(selector);
+    await locator.setChecked(checked);
+    if ((await locator.isChecked()) !== checked) throw new Error("Checkbox verification failed.");
   }
-
-  public async waitForNavigation(previousUrl: string, timeoutMs = 5_000): Promise<NavigationState> {
+  public async waitForNavigation(previousUrl: string, timeoutMs = 5000): Promise<NavigationState> {
     if (this.currentUrl() === previousUrl) {
       try {
         await this.page.waitForURL((url) => url.href !== previousUrl, { timeout: timeoutMs });
-      } catch {
-        // A timeout means the action did not navigate; callers receive that deterministic result.
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
       }
     }
-
-    return {
-      previousUrl,
-      url: this.currentUrl(),
-      navigated: this.currentUrl() !== previousUrl
-    };
+    this.check();
+    return { previousUrl, url: this.currentUrl(), navigated: this.currentUrl() !== previousUrl };
   }
-
   public async clickAndDetectNavigation(
     selector: string,
-    timeoutMs = 5_000
+    timeoutMs = 5000
   ): Promise<NavigationState> {
     const previousUrl = this.currentUrl();
     await this.click(selector);
     return this.waitForNavigation(previousUrl, timeoutMs);
   }
-
   public currentUrl(): string {
     return this.page.url();
   }
-
-  public async close(): Promise<void> {
-    const context = this.page.context();
-    if (this.ownsPage) {
-      await this.page.close();
-    }
-    if (this.ownsContext) {
-      await context.close();
-    }
+  public async screenshot(filePath: string) {
+    await this.page.screenshot({ path: filePath, fullPage: false });
   }
-
-  private assertUrlAllowed(url: string): void {
-    if (this.allowedDomains.size > 0 && !isAllowedUrl(url, this.allowedDomains)) {
-      throw new Error(`Navigation blocked: ${url} is not on the configured allowlist.`);
-    }
+  public async close(): Promise<void> {
+    await this.page.context().unroute("**/*", this.route);
+    this.page.off("popup", this.popup);
+    const context = this.page.context();
+    if (this.ownsPage) await this.page.close();
+    if (this.ownsContext) await context.close();
+  }
+  private assertAllowed(url: string) {
+    if (!isAllowedUrl(url, this.allowed))
+      throw new Error("Navigation blocked: target is not on the configured allowlist.");
   }
 }
-
 export function isLoopbackCdpEndpoint(endpoint: string): boolean {
   try {
     const url = new URL(endpoint);
     return (
-      (url.protocol === "http:" || url.protocol === "https:") &&
-      (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]")
+      ["http:", "https:"].includes(url.protocol) &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) &&
+      !url.username &&
+      !url.password
     );
   } catch {
     return false;
   }
 }
-
 function pageMatchesUrl(pageUrl: string, targetUrl: string): boolean {
   try {
-    const page = new URL(pageUrl);
-    const target = new URL(targetUrl);
+    const page = new URL(pageUrl),
+      target = new URL(targetUrl);
     return page.origin === target.origin && page.pathname === target.pathname;
   } catch {
     return false;

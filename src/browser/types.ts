@@ -22,6 +22,18 @@ export interface InteractiveControl {
   readonly disabled: boolean;
   readonly required: boolean;
   readonly options: readonly SelectChoice[];
+  readonly question?: string;
+  readonly group?: string;
+  readonly inputType?: string;
+  readonly factKey?: string;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+  readonly maxLength?: number;
+  readonly matrix?: string;
+  readonly row?: string;
+  readonly rowLabel?: string;
+  readonly scale?: boolean;
 }
 
 export interface PageState {
@@ -29,6 +41,11 @@ export interface PageState {
   readonly title: string;
   readonly text: string;
   readonly controls: readonly InteractiveControl[];
+  readonly hasCaptcha?: boolean;
+  readonly hasAuthentication?: boolean;
+  readonly hasUnsupported?: boolean;
+  readonly complete?: boolean;
+  readonly validationErrors?: readonly string[];
 }
 
 export interface NavigationState {
@@ -48,6 +65,7 @@ export interface BrowserSession {
   waitForNavigation(previousUrl: string, timeoutMs?: number): Promise<NavigationState>;
   clickAndDetectNavigation(selector: string, timeoutMs?: number): Promise<NavigationState>;
   currentUrl(): string;
+  screenshot?(filePath: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -68,6 +86,7 @@ export interface ChromiumBrowserOptions {
   readonly headless?: boolean;
   readonly maxPageTextLength?: number;
   readonly mode?: BrowserConnectionMode;
+  readonly userDataDirectory?: string;
 }
 
 export type BrowserConnectionMode = "attached_chrome" | "managed_chromium";

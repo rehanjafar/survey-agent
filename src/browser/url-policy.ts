@@ -8,6 +8,9 @@ export function isAllowedUrl(targetUrl: string, allowedDomains: ReadonlySet<stri
   }
 
   return (
-    (url.protocol === "http:" || url.protocol === "https:") && allowedDomains.has(url.hostname)
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    !url.username &&
+    !url.password &&
+    allowedDomains.has(url.hostname)
   );
 }
