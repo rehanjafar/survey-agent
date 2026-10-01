@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="survey-token" content="__TOKEN__" />
+    <title>Survey Agent · Control room</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="/"
+        ><span class="brand-mark">s.</span
+        ><span>Survey Agent<small>YOUR LOCAL CONTROL ROOM</small></span></a
+      >
+      <nav aria-label="Main navigation">
+        <button class="nav active" data-panel="overview" aria-current="page">
+          <span>◉</span> Overview
+        </button>
+        <button class="nav" data-panel="profile"><span>◎</span> My profile</button>
+        <button class="nav" data-panel="settings"><span>⚙</span> Connections & setup</button>
+        <button class="nav" data-panel="history"><span>↗</span> Activity</button>
+        <button class="nav" data-panel="guide"><span>?</span> Getting started</button>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="dot"></span> Runs on your laptop
+        <p>Local storage · No model charges</p>
+        <small id="connection">Connecting…</small>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div class="breadcrumb">WORKSPACE <span>/</span> Personal</div>
+        <span class="pill">NO-COST MODE</span>
+      </header>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <section id="overview" class="panel">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">A LITTLE LESS REPETITION</div>
+            <h1>Your survey workspace.</h1>
+            <p>Keep your answers consistent. Stay in control.</p>
+          </div>
+          <button id="demo" class="secondary">Try local practice ↗</button>
+        </div>
+        <div class="stats">
+          <article>
+            <span>Saved profile facts</span><strong id="fact-count">0</strong
+            ><small>Information you have provided</small>
+          </article>
+          <article>
+            <span>Recorded answers</span><strong id="answer-count">0</strong
+            ><small>Verified in the browser</small>
+          </article>
+          <article>
+            <span>Reusable mappings</span><strong id="mapping-count">0</strong
+            ><small>Fewer repeated questions</small>
+          </article>
+        </div>
+        <div class="workspace-grid">
+          <article class="card run-card">
+            <div class="card-title">
+              <h2>Current run</h2>
+              <span id="status" class="status">Ready</span>
+            </div>
+            <p id="run-message">Set up your profile and connection, then start a survey.</p>
+            <div class="run-url" id="run-url">No active browser session</div>
+            <div class="run-details">
+              <span>Actions taken <b id="steps">0</b></span
+              ><span>Answer source <b>Profile + memory</b></span>
+            </div>
+            <div class="button-row">
+              <button id="start">Start survey</button
+              ><button id="pause" class="secondary" disabled>Pause</button
+              ><button id="resume" class="secondary" disabled>Resume</button
+              ><button id="stop" class="danger" disabled>Stop</button>
+            </div>
+            <p class="hint">
+              The survey opens in a separate browser. Sign in there when prompted. Your browser
+              session is saved on this laptop.
+            </p>
+          </article>
+          <article class="card">
+            <div class="eyebrow">HOW IT WORKS</div>
+            <h2>Familiar questions,<br />fewer interruptions.</h2>
+            <ol class="steps-list">
+              <li>
+                <span>01</span>
+                <div>
+                  <b>Remember what matters</b>
+                  <p>Your profile and confirmed answers stay local.</p>
+                </div>
+              </li>
+              <li>
+                <span>02</span>
+                <div>
+                  <b>Continue with confidence</b>
+                  <p>Recognized questions are answered automatically.</p>
+                </div>
+              </li>
+              <li>
+                <span>03</span>
+                <div>
+                  <b>Ask when something is missing</b>
+                  <p>Unfamiliar questions appear here for your input.</p>
+                </div>
+              </li>
+            </ol>
+          </article>
+        </div>
+        <article class="card review-card" id="review-panel" hidden>
+          <div class="card-title">
+            <div>
+              <div class="eyebrow">YOUR INPUT NEEDED</div>
+              <h2 id="review-title">Review the current question</h2>
+            </div>
+            <span class="pill amber">Run paused</span>
+          </div>
+          <p id="review-message"></p>
+          <form id="answer-form">
+            <div id="answer-controls"></div>
+            <label class="check"
+              ><input id="remember-answer" type="checkbox" /> Reuse this answer for future matching
+              questions</label
+            ><button type="submit">Confirm answer & continue</button>
+          </form>
+          <button id="confirm-submit" hidden>Confirm survey submission</button>
+          <details id="chat-handoff">
+            <summary>Ask ChatGPT using your own account</summary>
+            <p>
+              Copy this prompt into your normal ChatGPT conversation. Check the response, then paste
+              its JSON answer below. This app makes no model request. Your account's message and
+              upload limits still apply.
+            </p>
+            <textarea
+              id="chat-prompt"
+              rows="7"
+              readonly
+              aria-label="Compact ChatGPT prompt"
+            ></textarea>
+            <div class="button-row">
+              <button id="copy-prompt" class="secondary" type="button">Copy prompt</button
+              ><a
+                class="button secondary"
+                href="https://chatgpt.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Open ChatGPT ↗</a
+              >
+            </div>
+            <label for="chat-answer">Paste the JSON answer</label
+            ><textarea
+              id="chat-answer"
+              rows="4"
+              placeholder='{"selectedOption":"Canada","confidence":1,"reason":""}'
+            ></textarea
+            ><button id="import-answer" class="secondary" type="button">
+              Confirm pasted answer & continue
+            </button>
+          </details>
+        </article>
+        <div class="footnote">
+          Eureka support covers recognizable web controls. Third-party providers and custom widgets
+          may require manual review. Practice runs stay on this computer.
+        </div>
+      </section>
+      <section id="profile" class="panel" hidden>
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">A CONSISTENT START</div>
+            <h1>Your profile.</h1>
+            <p>
+              Save information you want to reuse. Established facts are never silently replaced.
+            </p>
+          </div>
+        </div>
+        <div class="workspace-grid">
+          <article class="card">
+            <h2>Add a profile fact</h2>
+            <form id="fact-form">
+              <label for="fact-key">Fact</label
+              ><select id="fact-key">
+                <option value="country">Country</option>
+                <option value="age">Age</option>
+                <option value="household_size">Household size</option>
+                <option value="preferred_color">Preferred color</option>
+                <option value="interests">Interests</option>
+                <option value="custom">Custom fact</option>
+              </select>
+              <label for="custom-key" id="custom-label" hidden
+                >Custom name (lowercase, e.g. employment_status)</label
+              ><input id="custom-key" hidden maxlength="80" />
+              <label for="fact-value">Your answer</label
+              ><input id="fact-value" required maxlength="2000" placeholder="For example, Canada" />
+              <label for="fact-kind">Category</label
+              ><select id="fact-kind">
+                <option value="stable">Stable information</option>
+                <option value="preference">Preference</option>
+                <option value="temporary">Temporary / uncertain</option>
+              </select>
+              <label class="check"
+                ><input id="fact-confirmed" type="checkbox" checked /> This information is
+                confirmed</label
+              ><button type="submit">Save fact</button>
+            </form>
+            <p class="hint">
+              Temporary or unconfirmed facts are never used to answer automatically. Adding a fact
+              refreshes the answer cache.
+            </p>
+          </article>
+          <article class="card">
+            <h2>Saved information</h2>
+            <div id="facts-list" class="stack"></div>
+            <p class="hint">
+              Use Correct to explicitly update a fact. Its previous value stays in local history.
+            </p>
+            <button id="clear-memory" class="secondary">Clear reusable answer mappings</button>
+          </article>
+        </div>
+      </section>
+      <section id="settings" class="panel" hidden>
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">MAKE IT YOURS</div>
+            <h1>Connections & setup.</h1>
+            <p>Settings are saved locally and apply to the next run.</p>
+          </div>
+        </div>
+        <form id="settings-form" class="card settings-form">
+          <h2>Survey browser</h2>
+          <label for="start-url">Starting URL</label><input id="start-url" type="url" required />
+          <div class="form-grid">
+            <div>
+              <label for="platform">Website adapter</label
+              ><select id="platform">
+                <option value="eureka">Eureka Surveys</option>
+                <option value="generic">Generic survey</option>
+              </select>
+            </div>
+            <div>
+              <label for="ranking">Prioritize offers by</label
+              ><select id="ranking">
+                <option value="reward_per_minute">Displayed reward per minute</option>
+                <option value="reward">Highest displayed reward</option>
+              </select>
+            </div>
+          </div>
+          <label for="domains">Allowed domains, one per line</label
+          ><textarea id="domains" rows="4" required></textarea>
+          <p class="hint">
+            Exact host names only, without https:// or paths. Add a third-party survey provider only
+            after you recognize it.
+          </p>
+          <div class="form-grid">
+            <div>
+              <label for="max-steps">Maximum actions per run</label
+              ><input id="max-steps" type="number" min="1" max="500" required />
+            </div>
+            <div>
+              <label for="step-delay">Delay between answers (milliseconds)</label
+              ><input id="step-delay" type="number" min="250" max="10000" required />
+            </div>
+          </div>
+          <label class="check"
+            ><input id="auto-submit" type="checkbox" /> Automatically submit completed
+            surveys</label
+          >
+          <label class="check"
+            ><input id="headless" type="checkbox" /> Hide the survey browser (sign-in must already
+            be saved)</label
+          >
+          <label class="check"
+            ><input id="restart-run" type="checkbox" /> Start a new inspection run after an
+            interrupted application restart</label
+          >
+          <div class="callout">
+            <b>No-cost answering is locked on.</b>
+            <p>
+              Saved facts and confirmed answers are automatic. New answers can be entered here or
+              brought over from ChatGPT. API keys are not read or used by this dashboard.
+            </p>
+          </div>
+          <button type="submit">Save settings</button>
+        </form>
+      </section>
+      <section id="history" class="panel" hidden>
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">A CLEAR RECORD</div>
+            <h1>Activity.</h1>
+            <p>Run history persists when you close the application.</p>
+          </div>
+        </div>
+        <article class="card">
+          <h2>Recent runs</h2>
+          <div id="runs-list" class="stack"></div>
+        </article>
+        <article class="card">
+          <h2>Operational events</h2>
+          <div id="events-list" class="stack"></div>
+        </article>
+      </section>
+      <section id="guide" class="panel" hidden>
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">READY WHEN YOU ARE</div>
+            <h1>Start with practice.</h1>
+            <p>Windows and macOS use the same local dashboard.</p>
+          </div>
+        </div>
+        <article class="card prose">
+          <h2>First run</h2>
+          <ol>
+            <li>Add your country, age and other reusable information under My profile.</li>
+            <li>
+              Use Try local practice to learn the review flow without opening an external survey.
+            </li>
+            <li>Configure Eureka and the domains you recognize under Connections & setup.</li>
+            <li>Start a survey. Sign in manually in the browser if prompted, then Resume.</li>
+            <li>
+              When a question needs your input, answer in the review panel or use the ChatGPT
+              handoff.
+            </li>
+          </ol>
+          <h2>Keeping it running</h2>
+          <p>
+            Leave the laptop powered, awake and connected. The background launcher can restart the
+            local app after a crash; operating-system login startup is optional. Browsers need your
+            logged-in desktop session. Closing the laptop or losing internet will interrupt
+            progress.
+          </p>
+          <h2>Your data</h2>
+          <p>
+            Settings, SQLite memory and a dedicated browser profile stay on this computer. Stop the
+            app before making a backup. Browser sign-ins should be established separately on each
+            laptop.
+          </p>
+          <p>Data folder: <code id="data-dir"></code></p>
+          <h2>Compatibility</h2>
+          <p>
+            Native radio buttons, checkboxes, dropdowns, text and numeric inputs, scales, labelled
+            matrices and conditional questions are supported. Embedded frames and unrecognized
+            custom widgets pause for manual review. Eureka's third-party surveys can differ, so live
+            compatibility is not guaranteed.
+          </p>
+          <h2>ChatGPT</h2>
+          <p>
+            The handoff works with your normal account, but it is manual. ChatGPT access and usage
+            limits are determined by your plan. This application never promises unlimited messages
+            or uploads.
+          </p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
