@@ -55,6 +55,7 @@ export interface NavigationState {
 }
 
 export interface BrowserSession {
+  openLink?(url: string): Promise<void>;
   pendingNavigation?(): { hostname: string; canContinue: boolean } | null;
   approveNavigation?(hostname: string): Promise<void>;
   navigate(url: string): Promise<PageState>;
@@ -83,6 +84,7 @@ export interface BrowserAutomationDriver {
 }
 
 export interface ChromiumBrowserOptions {
+  readonly navigationMode?: "compatible" | "strict";
   readonly allowedDomains?: readonly string[];
   readonly cdpEndpoint?: string;
   readonly headless?: boolean;

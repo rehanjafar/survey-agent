@@ -82,6 +82,7 @@ function fillSettings(config) {
   $("platform").value = config.platform;
   $("ranking").value = config.rankBy;
   $("domains").value = config.allowedDomains.join("\n");
+  $("navigation-mode").value = config.navigationMode;
   $("max-steps").value = config.maxSteps;
   $("step-delay").value = config.stepDelayMs;
   $("auto-submit").checked = config.autoSubmit;
@@ -113,6 +114,7 @@ async function refresh() {
   $("stop").disabled = !active;
   $("resume").disabled =
     !["paused", "review"].includes(status) || state.busy || Boolean(state.pendingNavigation);
+  $("open-browser-link").disabled = !["paused", "review"].includes(status) || state.busy;
   $("data-dir").textContent = state.dataDirectory;
   if (!loadedSettings) {
     fillSettings(state.settings);
@@ -255,6 +257,12 @@ function renderReview() {
   }
 }
 $("start").addEventListener("click", () => post("start"));
+$("open-link-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const url = $("browser-link").value;
+  $("browser-link").value = "";
+  void post("browser/open", { url, confirmed: true });
+});
 $("practice-start").addEventListener("click", () => post("demo"));
 $("approve-provider").addEventListener("click", () => {
   if (state.pendingNavigation?.canContinue)
@@ -340,6 +348,7 @@ $("settings-form").addEventListener("submit", async (event) => {
     ...state.settings,
     startUrl: $("start-url").value,
     platform: $("platform").value,
+    navigationMode: $("navigation-mode").value,
     rankBy: $("ranking").value,
     allowedDomains: $("domains")
       .value.split(/[\s,]+/)

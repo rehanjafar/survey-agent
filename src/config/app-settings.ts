@@ -21,6 +21,7 @@ export const settingsSchema = z
       .max(100)
       .default(["eurekasurveys.com", "www.eurekasurveys.com", "localhost", "127.0.0.1"]),
     platform: z.enum(["generic", "eureka"]).default("eureka"),
+    navigationMode: z.enum(["compatible", "strict"]).default("compatible"),
     provider: z.literal("manual").default("manual"),
     headless: z.boolean().default(false),
     autoSubmit: z.boolean().default(false),

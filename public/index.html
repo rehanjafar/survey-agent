@@ -128,6 +128,31 @@
               The survey opens in a separate browser. Sign in there when prompted. Your browser
               session is saved on this laptop.
             </p>
+            <details>
+              <summary>Open a login or survey link in the agent browser</summary>
+              <p>
+                Pause the run first. Pasting a link here explicitly approves its host for this run.
+                New redirect domains still ask for approval. The browser opens the link but stays
+                paused for manual sign-in.
+              </p>
+              <form id="open-link-form">
+                <label for="browser-link">Link to open (HTTP or HTTPS)</label>
+                <input
+                  id="browser-link"
+                  type="url"
+                  required
+                  maxlength="8192"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="https://…"
+                />
+                <button id="open-browser-link" type="submit">Open link in browser</button>
+              </form>
+              <p class="hint">
+                Login links are sensitive. Paste them here, not in chat. The app does not save the
+                full link in its settings or logs; the browser and destination still receive it.
+              </p>
+            </details>
           </article>
           <article class="card">
             <div class="eyebrow">HOW IT WORKS</div>
@@ -312,9 +337,22 @@
           <label for="domains">Allowed domains, one per line</label
           ><textarea id="domains" rows="4" required></textarea>
           <p class="hint">
-            Exact host names only, without https:// or paths. Add a third-party survey provider only
-            after you recognize it. New top-level redirects can also be approved for the current run
-            without restarting.
+            Host names only, without https:// or paths. Compatible mode includes their subdomains.
+            Add a third-party survey provider only after you recognize it. New top-level redirects
+            can also be approved for the current run without restarting.
+          </p>
+          <label for="navigation-mode">Browser compatibility</label>
+          <select id="navigation-mode">
+            <option value="compatible">
+              Compatible — subdomains, verification frames and new-window links
+            </option>
+            <option value="strict">Strict — exact domains, no new windows</option>
+          </select>
+          <p class="hint">
+            Compatible mode lets Google reCAPTCHA frames load for manual login without allowing
+            Google as a survey destination. Approved-site links that request a new window open in
+            the same agent tab. Unrecognized providers still need approval. CAPTCHA solving and
+            login remain manual.
           </p>
           <div class="form-grid">
             <div>

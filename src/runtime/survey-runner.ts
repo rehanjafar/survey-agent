@@ -54,7 +54,13 @@ export class SurveyRunner {
   public async start(settings: AppSettings): Promise<void> {
     if (this.task || (this.run && ["running", "paused", "review"].includes(this.run.status)))
       throw new Error("Stop the current run first.");
-    if (!isAllowedUrl(settings.startUrl, new Set(settings.allowedDomains)))
+    if (
+      !isAllowedUrl(
+        settings.startUrl,
+        new Set(settings.allowedDomains),
+        settings.navigationMode === "compatible"
+      )
+    )
       throw new Error("Start URL must be in the allowed domains.");
     await this.closeBrowser();
     this.settings = { ...settings };
@@ -144,6 +150,36 @@ export class SurveyRunner {
   }
   public async idle(): Promise<void> {
     await this.task;
+  }
+  public async openLink(value: string): Promise<void> {
+    if (
+      this.task ||
+      !this.session?.openLink ||
+      !this.settings ||
+      !this.run ||
+      !["paused", "review"].includes(this.run.status)
+    )
+      throw new Error("Pause the active browser run before opening a link.");
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
+      throw new Error("Use an HTTP(S) link without embedded credentials.");
+    // Explicit user input approves only this host for this run. Do not persist
+    // magic-link query strings or fragments in configuration, history or logs.
+    this.settings = {
+      ...this.settings,
+      allowedDomains: [...new Set([...this.settings.allowedDomains, url.hostname])]
+    };
+    this.question = null;
+    this.reason = null;
+    this.lastNavigation = undefined;
+    this.answered.clear();
+    this.status("running", "Opening your link in the survey browser…");
+    this.launchTask(async () => {
+      await this.session!.openLink!(url.href);
+      this.run!.url = safeUrl(this.session!.currentUrl());
+      if (this.run?.status === "running")
+        this.status("paused", "Link opened. Finish signing in manually, then Resume when ready.");
+    });
   }
   public async approveProvider(hostname: string): Promise<void> {
     const pending = this.session?.pendingNavigation?.();
@@ -290,7 +326,14 @@ export class SurveyRunner {
   }
   private async guard(page: PageState): Promise<boolean> {
     let reason: ReviewReason | undefined;
-    if (!isAllowedUrl(page.url, new Set(this.settings!.allowedDomains))) reason = "unexpected_page";
+    if (
+      !isAllowedUrl(
+        page.url,
+        new Set(this.settings!.allowedDomains),
+        this.settings!.navigationMode === "compatible"
+      )
+    )
+      reason = "unexpected_page";
     else if (page.hasCaptcha || /\b(captcha|verify you are human)\b/i.test(page.text))
       reason = "captcha_detected";
     else if (page.hasAuthentication) reason = "authentication_required";
@@ -408,7 +451,7 @@ export class SurveyRunner {
 }
 function safeUrl(value: string) {
   const url = new URL(value);
-  return url.origin + url.pathname;
+  return url.origin;
 }
 function binding(question: NormalizedQuestion) {
   return JSON.stringify([

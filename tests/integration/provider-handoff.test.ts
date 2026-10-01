@@ -23,6 +23,12 @@ const server = createServer((request, response) => {
     return;
   }
   response.setHeader("content-type", "text/html");
+  if (request.url === "/popup") {
+    response.end(
+      `<a target="_blank" href="${target}/question">Open survey</a><button onclick="window.open('${target}/question')">Open window</button>`
+    );
+    return;
+  }
   if (request.url === "/form") {
     response.end(
       `<form method="post" action="${target}/question"><button>Continue</button></form>`
@@ -119,5 +125,91 @@ it("follows redirects to preconfigured providers without an approval interruptio
     expect(session.pendingNavigation?.()).toBeNull();
   } finally {
     await driver.close();
+  }
+});
+
+it.each(["a", "button"])(
+  "opens an approved new-window link in the same managed tab (%s)",
+  async (selector) => {
+    const driver = new PlaywrightChromiumBrowser({
+      allowedDomains: ["localhost", "127.0.0.1"],
+      navigationMode: "compatible"
+    });
+    try {
+      const session = await driver.createSession();
+      await session.navigate(origin + "/popup");
+      await session.click(selector);
+      await session.waitForNavigation(origin + "/popup");
+      const page = await session.capturePageState();
+      expect(page.url).toBe(target + "/question");
+      expect(session.pendingNavigation?.()).toBeNull();
+    } finally {
+      await driver.close();
+    }
+  }
+);
+
+it("keeps a new-window destination pending when it needs approval", async () => {
+  const driver = new PlaywrightChromiumBrowser({
+    allowedDomains: ["localhost"],
+    navigationMode: "compatible"
+  });
+  try {
+    const session = await driver.createSession();
+    await session.navigate(origin + "/popup");
+    const before = received;
+    await session.click("button").catch(() => undefined);
+    await expect
+      .poll(() => session.pendingNavigation?.())
+      .toEqual({ hostname: "127.0.0.1", canContinue: true });
+    expect(received).toBe(before);
+    await expect(session.capturePageState()).rejects.toThrow();
+    await session.approveNavigation!("127.0.0.1");
+    expect((await session.capturePageState()).url).toBe(target + "/question");
+  } finally {
+    await driver.close();
+  }
+});
+
+it("opens explicitly supplied links, stays paused and never stores the link token", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "manual-link-"));
+  const settings = settingsSchema.parse({
+    startUrl: origin + "/redirect",
+    allowedDomains: ["localhost"],
+    platform: "generic",
+    headless: true
+  });
+  const app = await createApplication(directory, settings);
+  try {
+    const dashboard = await app.listen(0);
+    const html = await (await fetch(dashboard)).text();
+    const token = html.match(/name="survey-token" content="([^"]+)"/)![1]!;
+    const open = (url: string, authenticated = true) =>
+      fetch(dashboard + "/api/browser/open", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(authenticated ? { "x-survey-token": token } : {})
+        },
+        body: JSON.stringify({ url, confirmed: true })
+      });
+    await app.runner.start(settings);
+    await app.runner.idle();
+    expect((await open(target, false)).status).toBe(403);
+    expect((await open("file:///tmp/private")).status).toBe(400);
+    expect((await open(target + "/question/magic-link-token?secret=magic-link-token")).status).toBe(
+      200
+    );
+    await app.runner.idle();
+    expect(app.runner.state()).toMatchObject({
+      run: { status: "paused", url: target },
+      pendingNavigation: null
+    });
+    expect(
+      JSON.stringify([app.store.runs(), app.store.events(), app.runner.state()])
+    ).not.toContain("magic-link-token");
+  } finally {
+    await app.close();
+    await rm(directory, { recursive: true, force: true });
   }
 });

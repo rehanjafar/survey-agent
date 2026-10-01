@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
-import type { Browser, BrowserContext, Page, Route, CDPSession } from "playwright";
-import { isAllowedUrl } from "./url-policy.js";
+import type { Browser, BrowserContext, Page, Route, CDPSession, Frame } from "playwright";
+import { isAllowedUrl, isAllowedDocument } from "./url-policy.js";
 import { snapshot } from "./snapshot.js";
 import type {
   BrowserAutomationDriver,
@@ -62,7 +62,8 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
       this.allowed,
       this.options.maxPageTextLength ?? 12000,
       options.reuseContext === false,
-      !attached
+      !attached,
+      this.options.navigationMode === "compatible"
     );
     await session.installPolicy();
     return session;
@@ -80,25 +81,47 @@ class PlaywrightBrowserSession implements BrowserSession {
   private readonly approved = new Set<string>();
   private cdp: CDPSession | undefined;
   private mainFrameId = "";
+  private transition: Promise<void> | undefined;
+  private readonly expectedPopups = new Set<string>();
   public constructor(
     private readonly page: Page,
     private readonly allowed: ReadonlySet<string>,
     private readonly maxText: number,
     private readonly ownsContext: boolean,
-    private readonly ownsPage: boolean
+    private readonly ownsPage: boolean,
+    private readonly compatible: boolean
   ) {}
   private readonly route = async (route: Route) => {
     const request = route.request();
     if (request.isNavigationRequest()) {
-      const target = request.frame().page();
+      let frame: Frame;
+      try {
+        frame = request.frame();
+      } catch {
+        // Chromium can report a new window's first request before its Frame exists.
+        // Correlate it with this tab's Page.windowOpen event, not unrelated tabs.
+        if (this.expectedPopups.delete(request.url())) {
+          await this.handlePopupNavigation(route);
+          return;
+        }
+        await route.fallback();
+        return;
+      }
+      const target = frame.page();
       const related = target === this.page || (await target.opener()) === this.page;
-      if (related && (target !== this.page || !this.isAllowed(request.url()))) {
+      const top = frame === target.mainFrame();
+      const popup = target !== this.page;
+      if (related && popup && top) {
+        await this.handlePopupNavigation(route);
+        return;
+      }
+      if (related && (popup || !this.isDocumentAllowed(request.url(), !top))) {
         this.blocked = true;
         this.pending = {
           url: request.url(),
           canContinue:
-            target === this.page &&
-            request.frame() === this.page.mainFrame() &&
+            (target === this.page || this.compatible) &&
+            top &&
             request.method() === "GET" &&
             this.isWebUrl(request.url())
         };
@@ -108,9 +131,26 @@ class PlaywrightBrowserSession implements BrowserSession {
     }
     await route.fallback();
   };
+  private async handlePopupNavigation(route: Route) {
+    const request = route.request();
+    this.expectedPopups.delete(request.url());
+    const canContinue =
+      this.compatible && request.method() === "GET" && this.isWebUrl(request.url());
+    await route.abort("blockedbyclient");
+    if (canContinue && this.isAllowed(request.url())) {
+      this.transition = this.page
+        .goto(request.url(), { waitUntil: "domcontentloaded" })
+        .then(() => undefined)
+        .catch(() => {
+          this.blocked = true;
+        });
+    } else {
+      this.blocked = true;
+      this.pending = { url: request.url(), canContinue };
+    }
+  }
   private readonly popup = (page: Page) => {
-    this.blocked = true;
-    this.pending = null;
+    if (!this.compatible) this.blocked = true;
     void page.close().catch(() => undefined);
   };
   private isWebUrl(value: string) {
@@ -122,11 +162,27 @@ class PlaywrightBrowserSession implements BrowserSession {
     }
   }
   private isAllowed(url: string) {
-    return isAllowedUrl(url, new Set([...this.allowed, ...this.approved]));
+    return isAllowedUrl(url, new Set([...this.allowed, ...this.approved]), this.compatible);
+  }
+  private isDocumentAllowed(url: string, embedded: boolean) {
+    return isAllowedDocument(
+      url,
+      new Set([...this.allowed, ...this.approved]),
+      this.compatible,
+      embedded,
+      this.page.url()
+    );
   }
   public pendingNavigation() {
     if (!this.pending || !this.isWebUrl(this.pending.url)) return null;
     return { hostname: new URL(this.pending.url).hostname, canContinue: this.pending.canContinue };
+  }
+  public async openLink(value: string) {
+    if (!this.isWebUrl(value)) throw new Error("Use an HTTP(S) link without embedded credentials.");
+    this.approved.add(new URL(value).hostname);
+    this.pending = null;
+    this.blocked = false;
+    await this.navigate(value);
   }
   public async approveNavigation(hostname: string) {
     const pending = this.pending;
@@ -146,6 +202,13 @@ class PlaywrightBrowserSession implements BrowserSession {
     // Chromium's request-stage interception observes every redirect hop. Playwright
     // routing alone only sees the initial URL of a native HTTP redirect chain.
     this.cdp = await this.page.context().newCDPSession(this.page);
+    await this.cdp.send("Page.enable");
+    this.cdp.on("Page.windowOpen", (event) => {
+      if (event.url && this.isWebUrl(event.url)) this.expectedPopups.add(event.url);
+      // Bound state even if a site repeatedly opens blank or blocked windows.
+      if (this.expectedPopups.size > 30)
+        this.expectedPopups.delete(this.expectedPopups.values().next().value!);
+    });
     const tree = await this.cdp.send("Page.getFrameTree");
     this.mainFrameId = tree.frameTree.frame.id;
     this.cdp.on("Fetch.requestPaused", (event) => {
@@ -169,7 +232,7 @@ class PlaywrightBrowserSession implements BrowserSession {
     request: { url: string; method: string };
   }) {
     const { url, method } = event.request;
-    if (!this.isAllowed(url)) {
+    if (!this.isDocumentAllowed(url, event.frameId !== this.mainFrameId)) {
       this.blocked = true;
       this.pending = {
         url,
@@ -194,6 +257,8 @@ class PlaywrightBrowserSession implements BrowserSession {
     return this.capturePageState();
   }
   public async capturePageState(): Promise<PageState> {
+    await this.transition;
+    this.transition = undefined;
     this.check();
     return this.page.evaluate(snapshot, this.maxText);
   }

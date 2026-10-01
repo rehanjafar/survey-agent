@@ -33,6 +33,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     (config) =>
       new PlaywrightChromiumBrowser({
         allowedDomains: config.allowedDomains,
+        navigationMode: config.navigationMode,
         headless: config.headless,
         userDataDirectory: join(dataDirectory, "browser-profile")
       }),
@@ -217,6 +218,14 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
             .strict()
             .parse(body);
           await runner.approveProvider(data.hostname);
+          break;
+        }
+        case "/api/browser/open": {
+          const data = z
+            .object({ url: z.string().url().max(8192), confirmed: z.literal(true) })
+            .strict()
+            .parse(body);
+          await runner.openLink(data.url);
           break;
         }
         default:
