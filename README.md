@@ -17,6 +17,16 @@ corepack pnpm start
 
 If Corepack is already installed, omit its installation command. On Windows use PowerShell or Command Prompt. These commands download dependencies and Chromium; setup does not contact a model or open a real survey. Do not copy `node_modules` or browser binaries between operating systems: install them on each laptop.
 
+If installing Corepack reports an existing `yarn.cmd` or requires administrator access, leave your existing tools alone and use this isolated alternative:
+
+```sh
+npx --yes --package=corepack@0.35.0 -- corepack pnpm install --frozen-lockfile
+npx --yes --package=corepack@0.35.0 -- corepack pnpm setup:local
+node scripts/supervise.mjs
+```
+
+This uses the same pinned package manager without installing global command shims. The Windows and macOS launchers also run directly through Node after setup.
+
 Open **http://127.0.0.1:4317**. The dashboard is accessible only from that computer. To use a different port, set `SURVEY_AGENT_PORT` in a local `.env` file before starting. Avoid running multiple app processes on the same data directory.
 
 Once installed, start with `Start-Windows.cmd`, `Start-macOS.command`, or:

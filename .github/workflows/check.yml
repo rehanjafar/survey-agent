@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - run: npm install --global corepack
-      - run: corepack pnpm install --frozen-lockfile
-      - run: corepack pnpm exec playwright install --with-deps chromium
-      - run: corepack pnpm check
+      # Isolate Corepack from preinstalled Yarn shims on Windows runners.
+      - run: npx --yes --package=corepack@0.35.0 -- corepack pnpm install --frozen-lockfile
+      - run: npx --yes --package=corepack@0.35.0 -- corepack pnpm exec playwright install --with-deps chromium
+      - run: npx --yes --package=corepack@0.35.0 -- corepack pnpm check
