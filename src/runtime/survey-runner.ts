@@ -22,6 +22,7 @@ export interface RunnerState {
   reason: string | null;
   prompt: string | null;
   busy: boolean;
+  pendingNavigation: { hostname: string; canContinue: boolean } | null;
 }
 export class SurveyRunner {
   private run: RunRecord | null = null;
@@ -46,7 +47,8 @@ export class SurveyRunner {
       question: this.question,
       reason: this.reason,
       prompt: this.question ? chatPrompt(providerQuestion(this.question, this.store)) : null,
-      busy: Boolean(this.task)
+      busy: Boolean(this.task),
+      pendingNavigation: this.session?.pendingNavigation?.() ?? null
     };
   }
   public async start(settings: AppSettings): Promise<void> {
@@ -92,6 +94,8 @@ export class SurveyRunner {
     confirmSubmit = false,
     remember = false
   ): Promise<void> {
+    if (this.session?.pendingNavigation?.())
+      throw new Error("Review the new provider below before continuing.");
     if (this.reason === "step_limit")
       throw new Error("Stop this run before starting another; its action limit has been reached.");
     if (
@@ -141,13 +145,41 @@ export class SurveyRunner {
   public async idle(): Promise<void> {
     await this.task;
   }
+  public async approveProvider(hostname: string): Promise<void> {
+    const pending = this.session?.pendingNavigation?.();
+    if (
+      this.task ||
+      this.run?.status !== "review" ||
+      !this.settings ||
+      !pending?.canContinue ||
+      pending.hostname !== hostname ||
+      !this.session?.approveNavigation
+    )
+      throw new Error("No matching provider is awaiting approval.");
+    this.settings = {
+      ...this.settings,
+      allowedDomains: [...new Set([...this.settings.allowedDomains, hostname])]
+    };
+    this.question = null;
+    this.reason = null;
+    this.lastNavigation = undefined;
+    this.answered.clear();
+    this.status("running", "Opening the approved provider…");
+    audit(this.store, "provider_approved", { runId: this.run.id });
+    this.launchTask(async () => {
+      await this.session!.approveNavigation!(hostname);
+      if (this.run?.status === "running") await this.loop();
+    });
+  }
   private launchTask(work: () => Promise<void>): void {
     this.task = work()
       .catch(async () => {
         if (this.run?.status === "running")
           await this.review(
             "unexpected_page",
-            "Browser or page operation failed. Inspect the browser, verify allowed domains and resume."
+            this.session?.pendingNavigation?.()
+              ? "This survey is moving to another provider. Review its domain below before continuing."
+              : "Browser or page operation failed. Inspect the browser, verify allowed domains and resume."
           );
       })
       .finally(() => {
@@ -245,14 +277,6 @@ export class SurveyRunner {
         const discovered = await adapter.discoverOffers();
         if (discovered.status === "ready") {
           const offer = discovered.selectedOffer;
-          const control = page.controls.find((item) => item.selector === offer.selector);
-          if (control?.href && !isAllowedUrl(control.href, new Set(settings.allowedDomains))) {
-            await this.review(
-              "unexpected_page",
-              "The selected offer points to an unapproved survey provider. Add its domain in settings, then start a new run."
-            );
-            return;
-          }
           await this.navigateNext(page, offer.selector);
           continue;
         }

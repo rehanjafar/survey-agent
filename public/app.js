@@ -7,6 +7,11 @@ let questionKey = "";
 let posting = false;
 let editingFact = null;
 const pretty = (value) => String(value).replaceAll("_", " ");
+// Keep the task needing attention above summary cards, especially on narrow screens.
+$("overview").insertBefore($("review-panel"), document.querySelector(".stats"));
+document
+  .querySelectorAll("[data-go]")
+  .forEach((button) => button.addEventListener("click", () => showPanel(button.dataset.go)));
 function notify(message, error = false) {
   $("notice").textContent = message;
   $("notice").classList.toggle("error", error);
@@ -85,6 +90,8 @@ function fillSettings(config) {
 }
 async function refresh() {
   state = await api("state");
+  if (document.body.classList.contains("disconnected")) $("notice").hidden = true;
+  document.body.classList.remove("disconnected");
   $("connection").textContent = "Connected to local app";
   $("fact-count").textContent = state.stats.facts;
   $("answer-count").textContent = state.stats.answers;
@@ -100,9 +107,12 @@ async function refresh() {
   const active = ["running", "review", "paused"].includes(status);
   $("start").disabled = active || state.busy;
   $("demo").disabled = active || state.busy;
+  $("practice-start").disabled = active || state.busy;
+  $("onboarding").hidden = state.stats.answers > 0 || active;
   $("pause").disabled = status !== "running";
   $("stop").disabled = !active;
-  $("resume").disabled = !["paused", "review"].includes(status) || state.busy;
+  $("resume").disabled =
+    !["paused", "review"].includes(status) || state.busy || Boolean(state.pendingNavigation);
   $("data-dir").textContent = state.dataDirectory;
   if (!loadedSettings) {
     fillSettings(state.settings);
@@ -169,7 +179,15 @@ function renderReview() {
   $("review-message").textContent = state.run.message;
   $("review-title").textContent = pretty(state.reason || "Review required");
   $("confirm-submit").hidden = state.reason !== "submission_confirmation";
-  const question = state.question;
+  const pending = state.pendingNavigation;
+  $("provider-review").hidden = !pending;
+  if (pending) {
+    $("provider-host").textContent = pending.hostname;
+    $("approve-provider").hidden = !pending.canContinue;
+    $("approve-provider").disabled = state.busy;
+    $("provider-manual").hidden = pending.canContinue;
+  }
+  const question = pending ? null : state.question;
   $("answer-form").hidden = !question;
   $("chat-handoff").hidden = !question;
   $("confirm-submit").disabled = state.busy;
@@ -237,6 +255,11 @@ function renderReview() {
   }
 }
 $("start").addEventListener("click", () => post("start"));
+$("practice-start").addEventListener("click", () => post("demo"));
+$("approve-provider").addEventListener("click", () => {
+  if (state.pendingNavigation?.canContinue)
+    void post("provider/approve", { hostname: state.pendingNavigation.hostname, confirmed: true });
+});
 $("demo").addEventListener("click", () => {
   showPanel("overview");
   void post("demo");
@@ -333,8 +356,18 @@ async function poll() {
   try {
     await refresh();
   } catch {
-    $("connection").textContent = "Disconnected — retrying";
+    $("connection").textContent = "Disconnected — start the launcher; retrying";
+    document.body.classList.add("disconnected");
+    notify(
+      "The local app is not responding. Reopen Start-Windows.cmd or Start-macOS.command, then refresh this page. Your saved information stays on disk.",
+      true
+    );
+    for (const id of ["start", "demo", "practice-start", "resume", "pause", "stop"])
+      $(id).disabled = true;
   }
   setTimeout(poll, 1500);
 }
-void poll();
+if (window.location.protocol === "file:") {
+  document.body.classList.add("file-preview");
+  $("startup-help").hidden = false;
+} else void poll();

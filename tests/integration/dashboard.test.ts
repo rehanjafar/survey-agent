@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApplication } from "../../src/ui/server.js";
@@ -123,6 +124,29 @@ describe("local dashboard and autonomous survey loop", () => {
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
       ).toBe(true);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+  it("shows styled launch instructions instead of a broken dashboard when opened as a file", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    try {
+      await page.goto(pathToFileURL(join(process.cwd(), "public", "index.html")).href);
+      await page.waitForSelector("#startup-help", { state: "visible" });
+      expect(
+        await page.getByRole("heading", { name: "Open the app, not this file." }).isVisible()
+      ).toBe(true);
+      expect(await page.locator("main").isVisible()).toBe(false);
+      expect(
+        await page.getByRole("link", { name: "Open running dashboard" }).getAttribute("href")
+      ).toBe("http://127.0.0.1:4317/");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true
+      );
       expect(errors).toEqual([]);
     } finally {
       await browser.close();

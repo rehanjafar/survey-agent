@@ -5,10 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="survey-token" content="__TOKEN__" />
     <title>Survey Agent · Control room</title>
-    <link rel="stylesheet" href="/style.css" />
-    <script src="/app.js" defer></script>
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./app.js" defer></script>
   </head>
   <body>
+    <section id="startup-help" class="card startup-help" hidden>
+      <div class="eyebrow">LET’S GET YOU CONNECTED</div>
+      <h1>Open the app, not this file.</h1>
+      <p>
+        This is the dashboard’s HTML file. The local app needs to be running to save answers and
+        control the survey browser.
+      </p>
+      <ol>
+        <li>Install Node.js 24 or later if it is not already installed.</li>
+        <li>
+          In the project folder, double-click <b>Start-Windows.cmd</b> on Windows or
+          <b>Start-macOS.command</b> on Mac.
+        </li>
+        <li>
+          Keep the launcher open. First launch downloads dependencies and Chromium; the dashboard
+          then opens automatically.
+        </li>
+      </ol>
+      <a class="button" href="http://127.0.0.1:4317/">Open running dashboard ↗</a>
+      <p class="hint">
+        If it cannot connect, start the launcher first. A custom port is shown in the launcher
+        window. On Mac, you can also run <code>sh Start-macOS.command</code> in Terminal.
+      </p>
+      <h2>Using a phone?</h2>
+      <p>
+        The automation runs on a Windows or Mac computer, not directly on iOS or Android. The
+        dashboard fits small screens, but this version is accessible only on the host computer. Use
+        a trusted remote-desktop app to control that computer from your phone; do not expose this
+        app’s port to the internet.
+      </p>
+    </section>
+    <noscript
+      >JavaScript is required. Start the launcher and open http://127.0.0.1:4317 in a browser with
+      JavaScript enabled.</noscript
+    >
     <aside class="sidebar">
       <a class="brand" href="/"
         ><span class="brand-mark">s.</span
@@ -58,6 +93,19 @@
             ><small>Fewer repeated questions</small>
           </article>
         </div>
+        <article id="onboarding" class="card">
+          <div class="eyebrow">START HERE · NO EXTERNAL WEBSITE NEEDED</div>
+          <h2>Your first survey in three steps</h2>
+          <p>
+            Try a practice survey, answer the questions here, then save facts you want reused.
+            Unknown answers always pause for your input.
+          </p>
+          <div class="button-row">
+            <button id="practice-start">1. Try practice</button>
+            <button class="secondary" data-go="profile">2. Add my profile</button>
+            <button class="secondary" data-go="settings">3. Connect a website</button>
+          </div>
+        </article>
         <div class="workspace-grid">
           <article class="card run-card">
             <div class="card-title">
@@ -118,6 +166,21 @@
             <span class="pill amber">Run paused</span>
           </div>
           <p id="review-message"></p>
+          <div id="provider-review" class="callout" hidden>
+            <h3>Continue to a new survey provider?</h3>
+            <p id="provider-host"></p>
+            <p>
+              Only approve a domain you recognize and are authorized to use. Approval applies to
+              this run only; cookies remain in the same browser session. Further new domains ask
+              again.
+            </p>
+            <button id="approve-provider">Approve provider & continue</button>
+            <p id="provider-manual" hidden>
+              This transition cannot safely be replayed (for example, a submitted form or embedded
+              page). Inspect the survey browser; Stop before adjusting allowed domains in settings.
+              No form is resubmitted automatically.
+            </p>
+          </div>
           <form id="answer-form">
             <div id="answer-controls"></div>
             <label class="check"
@@ -250,7 +313,8 @@
           ><textarea id="domains" rows="4" required></textarea>
           <p class="hint">
             Exact host names only, without https:// or paths. Add a third-party survey provider only
-            after you recognize it.
+            after you recognize it. New top-level redirects can also be approved for the current run
+            without restarting.
           </p>
           <div class="form-grid">
             <div>
@@ -310,6 +374,13 @@
           </div>
         </div>
         <article class="card prose">
+          <h2>Computer or phone?</h2>
+          <p>
+            Windows and macOS run the browser engine. This dashboard is responsive, but iOS and
+            Android cannot run this application independently. For phone access, use trusted
+            remote-desktop software to your running computer. This app stays local-only; do not
+            port-forward it.
+          </p>
           <h2>First run</h2>
           <ol>
             <li>Add your country, age and other reusable information under My profile.</li>

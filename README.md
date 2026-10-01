@@ -6,6 +6,14 @@ A local Windows/macOS survey workspace with a browser dashboard, persistent Chro
 
 ## Install on Windows or macOS
 
+### Easiest way to start
+
+Install Node.js 24 or later, download/extract this branch, then double-click **Start-Windows.cmd** or **Start-macOS.command** in the project folder. The launcher installs missing dependencies, checks Chromium, builds the app and opens the dashboard. Keep its window open. On Mac, if Finder blocks the command file, run `sh Start-macOS.command` from that folder in Terminal.
+
+**Do not open `public/index.html` as the app.** The running dashboard is at **http://127.0.0.1:4317/** (or the custom port shown by the launcher). Start with **1. Try practice**, answer the review cards, then add your profile and connect a website. Setup requires internet access for package/browser downloads but makes no model calls.
+
+### Manual installation
+
 Install **Node.js 24 LTS** from [nodejs.org](https://nodejs.org/). Download this repository as a ZIP and extract it, or clone it with Git. Open a terminal inside the project folder:
 
 ```sh
@@ -54,7 +62,13 @@ The adapter discovers recognizable offers and ranks them by displayed reward per
 
 Question handling supports native labelled radio buttons, checkboxes, single-select dropdowns, text/numeric inputs, radio scales, labelled radio matrices, and conditional fields exposed after an answer. It re-extracts the page after actions and checks browser control values.
 
-Eureka's live website and third-party survey providers have **not** been validated by this project. Embedded surveys, popups, image questions and custom widgets pause rather than guessing. A redirect to an unapproved domain is blocked. Review and add recognized provider domains in settings before starting a new run. There is no CAPTCHA solving, sign-in bypass or invented eligibility information.
+Eureka's live website and third-party survey providers have **not** been validated by this project. The same generic question extractor runs on approved third-party domains; it is not restricted to Eureka. Preconfigured provider redirects continue automatically. For a new top-level GET navigation, the dashboard displays the exact hostname and an **Approve provider & continue** button. This approval lasts for the current run only and preserves its browser session. Each additional new domain asks again. Only approve sites you recognize and are authorized to use.
+
+Embedded surveys, popups, image questions and custom widgets pause rather than guessing. Cross-provider POST submissions are blocked and never replayed through the approval button. These transitions need manual inspection; stop the run before changing persistent allowed domains. There is no CAPTCHA solving, sign-in bypass or invented eligibility information.
+
+## Mobile use
+
+The dashboard layout supports small screens, but this application’s Node/Chromium engine requires a computer. It does **not** run independently on iOS or Android, and the dashboard currently binds only to the host computer. You can operate the computer through trusted remote-desktop software from a phone. Native phone operation and secure paired remote dashboard access are not implemented. Do not expose port 4317 to your LAN or the internet as a workaround.
 
 ## No-cost answering and ChatGPT
 

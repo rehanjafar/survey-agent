@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import type { Browser, BrowserContext, Page, Route } from "playwright";
+import type { Browser, BrowserContext, Page, Route, CDPSession } from "playwright";
 import { isAllowedUrl } from "./url-policy.js";
 import { snapshot } from "./snapshot.js";
 import type {
@@ -76,6 +76,10 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
 }
 class PlaywrightBrowserSession implements BrowserSession {
   private blocked = false;
+  private pending: { url: string; canContinue: boolean } | null = null;
+  private readonly approved = new Set<string>();
+  private cdp: CDPSession | undefined;
+  private mainFrameId = "";
   public constructor(
     private readonly page: Page,
     private readonly allowed: ReadonlySet<string>,
@@ -88,8 +92,16 @@ class PlaywrightBrowserSession implements BrowserSession {
     if (request.isNavigationRequest()) {
       const target = request.frame().page();
       const related = target === this.page || (await target.opener()) === this.page;
-      if (related && (target !== this.page || !isAllowedUrl(request.url(), this.allowed))) {
+      if (related && (target !== this.page || !this.isAllowed(request.url()))) {
         this.blocked = true;
+        this.pending = {
+          url: request.url(),
+          canContinue:
+            target === this.page &&
+            request.frame() === this.page.mainFrame() &&
+            request.method() === "GET" &&
+            this.isWebUrl(request.url())
+        };
         await route.abort("blockedbyclient");
         return;
       }
@@ -98,13 +110,76 @@ class PlaywrightBrowserSession implements BrowserSession {
   };
   private readonly popup = (page: Page) => {
     this.blocked = true;
+    this.pending = null;
     void page.close().catch(() => undefined);
   };
+  private isWebUrl(value: string) {
+    try {
+      const url = new URL(value);
+      return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+    } catch {
+      return false;
+    }
+  }
+  private isAllowed(url: string) {
+    return isAllowedUrl(url, new Set([...this.allowed, ...this.approved]));
+  }
+  public pendingNavigation() {
+    if (!this.pending || !this.isWebUrl(this.pending.url)) return null;
+    return { hostname: new URL(this.pending.url).hostname, canContinue: this.pending.canContinue };
+  }
+  public async approveNavigation(hostname: string) {
+    const pending = this.pending;
+    if (!pending?.canContinue || this.pendingNavigation()?.hostname !== hostname)
+      throw new Error("This navigation cannot be resumed safely. Inspect the browser manually.");
+    this.approved.add(hostname);
+    this.pending = null;
+    this.blocked = false;
+    // Only a blocked top-level GET may be continued. Never replay a submitted form.
+    await this.navigate(pending.url);
+  }
   public async installPolicy() {
     this.page.setDefaultTimeout(10000);
     this.page.setDefaultNavigationTimeout(30000);
     await this.page.context().route("**/*", this.route);
     this.page.on("popup", this.popup);
+    // Chromium's request-stage interception observes every redirect hop. Playwright
+    // routing alone only sees the initial URL of a native HTTP redirect chain.
+    this.cdp = await this.page.context().newCDPSession(this.page);
+    const tree = await this.cdp.send("Page.getFrameTree");
+    this.mainFrameId = tree.frameTree.frame.id;
+    this.cdp.on("Fetch.requestPaused", (event) => {
+      void this.interceptDocument(event).catch(() => {
+        this.blocked = true;
+        void this.cdp
+          ?.send("Fetch.failRequest", {
+            requestId: event.requestId,
+            errorReason: "BlockedByClient"
+          })
+          .catch(() => undefined);
+      });
+    });
+    await this.cdp.send("Fetch.enable", {
+      patterns: [{ resourceType: "Document", requestStage: "Request" }]
+    });
+  }
+  private async interceptDocument(event: {
+    requestId: string;
+    frameId: string;
+    request: { url: string; method: string };
+  }) {
+    const { url, method } = event.request;
+    if (!this.isAllowed(url)) {
+      this.blocked = true;
+      this.pending = {
+        url,
+        canContinue: event.frameId === this.mainFrameId && method === "GET" && this.isWebUrl(url)
+      };
+      await this.cdp!.send("Fetch.failRequest", {
+        requestId: event.requestId,
+        errorReason: "BlockedByClient"
+      });
+    } else await this.cdp!.send("Fetch.continueRequest", { requestId: event.requestId });
   }
   private check() {
     if (this.blocked)
@@ -180,6 +255,7 @@ class PlaywrightBrowserSession implements BrowserSession {
     await this.page.screenshot({ path: filePath, fullPage: false });
   }
   public async close(): Promise<void> {
+    await this.cdp?.detach().catch(() => undefined);
     await this.page.context().unroute("**/*", this.route);
     this.page.off("popup", this.popup);
     const context = this.page.context();
@@ -187,8 +263,11 @@ class PlaywrightBrowserSession implements BrowserSession {
     if (this.ownsContext) await context.close();
   }
   private assertAllowed(url: string) {
-    if (!isAllowedUrl(url, this.allowed))
+    if (!this.isAllowed(url)) {
+      this.blocked = true;
+      this.pending = { url, canContinue: this.isWebUrl(url) };
       throw new Error("Navigation blocked: target is not on the configured allowlist.");
+    }
   }
 }
 export function isLoopbackCdpEndpoint(endpoint: string): boolean {

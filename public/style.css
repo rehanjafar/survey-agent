@@ -13,6 +13,29 @@
   --green: #17694f;
   --border: #dce4db;
 }
+.startup-help {
+  max-width: 760px;
+  margin: 48px auto;
+  padding: 32px;
+}
+.file-preview > aside,
+.file-preview > main {
+  display: none;
+}
+#provider-host {
+  font-size: 1.25rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+#onboarding {
+  margin-bottom: 24px;
+}
+@media (max-width: 600px) {
+  .startup-help {
+    margin: 16px;
+    padding: 20px;
+  }
+}
 * {
   box-sizing: border-box;
 }

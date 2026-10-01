@@ -12,6 +12,8 @@ function launch() {
     stdio: "inherit",
     windowsHide: true
   });
+  // Open once on a deliberate launch, not on every crash restart.
+  delete process.env.SURVEY_AGENT_OPEN;
   child.on("error", () => {
     console.error("Could not start Survey Agent. Run setup:local first.");
     stopping = true;

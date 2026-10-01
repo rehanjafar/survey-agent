@@ -211,6 +211,14 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           );
           break;
         }
+        case "/api/provider/approve": {
+          const data = z
+            .object({ hostname: z.string().min(1).max(253), confirmed: z.literal(true) })
+            .strict()
+            .parse(body);
+          await runner.approveProvider(data.hostname);
+          break;
+        }
         default:
           json(response, 404, { error: "Not found." });
           return;

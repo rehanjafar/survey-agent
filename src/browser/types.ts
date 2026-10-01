@@ -55,6 +55,8 @@ export interface NavigationState {
 }
 
 export interface BrowserSession {
+  pendingNavigation?(): { hostname: string; canContinue: boolean } | null;
+  approveNavigation?(hostname: string): Promise<void>;
   navigate(url: string): Promise<PageState>;
   capturePageState(): Promise<PageState>;
   click(selector: string): Promise<void>;
