@@ -19,6 +19,11 @@ export interface NormalizedQuestion {
   readonly options: readonly SurveyOption[];
   readonly rows: readonly MatrixRow[];
   readonly inputSelector?: string;
+  readonly factKey?: string;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+  readonly maxLength?: number;
 }
 export type SurveyAction =
   | { readonly kind: "select_one"; readonly selector: string }
@@ -37,6 +42,10 @@ export type ReviewReason =
   | "low_confidence"
   | "no_question_found"
   | "unexpected_page"
+  | "provider_error"
+  | "missing_information"
+  | "submission_confirmation"
+  | "step_limit"
   | "unsupported_question";
 export interface ReviewRequired {
   readonly status: "review";

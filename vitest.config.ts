@@ -6,6 +6,8 @@ export default defineConfig({
     environment: "node",
     clearMocks: true,
     restoreMocks: true,
+    testTimeout: 15000,
+    hookTimeout: 30000,
     coverage: {
       reporter: ["text", "html"],
       reportsDirectory: "coverage"

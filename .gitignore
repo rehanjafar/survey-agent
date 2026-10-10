@@ -23,6 +23,10 @@ data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite-journal
+browser-profile/
+settings.json
+settings.json.tmp
 logs/
 screenshots/
 profiles/

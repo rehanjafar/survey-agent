@@ -1,6 +1,6 @@
 {
   "name": "survey-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "description": "A local, auditable survey automation foundation for authorized environments.",
@@ -10,6 +10,10 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
+    "start": "node dist/cli/main.js",
+    "build": "tsc -p tsconfig.build.json",
+    "setup:local": "node scripts/setup.mjs",
+    "start:permanent": "node scripts/supervise.mjs",
     "dev": "tsx src/cli/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -17,7 +21,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test"
+    "check": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm build && corepack pnpm test"
   },
   "dependencies": {
     "dotenv": "^16.6.1",

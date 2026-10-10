@@ -40,7 +40,8 @@ export class EurekaSurveyPlatformAdapter {
     const offers = rankOffers(
       state.controls
         .map((control) => offerFromControl(control))
-        .filter((offer): offer is EurekaOffer => offer !== null)
+        .filter((offer): offer is EurekaOffer => offer !== null),
+      this.options.rankBy
     );
 
     if (offers.length === 0) {
@@ -127,10 +128,22 @@ export function parseRewardCents(text: string): number | null {
   return null;
 }
 
-export function rankOffers(offers: readonly EurekaOffer[]): EurekaOffer[] {
+export function rankOffers(
+  offers: readonly EurekaOffer[],
+  rankBy: "reward" | "reward_per_minute" = "reward"
+): EurekaOffer[] {
   return offers
     .filter((offer) => offer.enabled && offer.rewardCents > 0)
-    .sort((left, right) => right.rewardCents - left.rewardCents);
+    .sort((left, right) =>
+      rankBy === "reward_per_minute"
+        ? (right.durationMinutes && right.durationMinutes > 0
+            ? right.rewardCents / right.durationMinutes
+            : 0) -
+            (left.durationMinutes && left.durationMinutes > 0
+              ? left.rewardCents / left.durationMinutes
+              : 0) || right.rewardCents - left.rewardCents
+        : right.rewardCents - left.rewardCents
+    );
 }
 
 function offerFromControl(control: InteractiveControl): EurekaOffer | null {
