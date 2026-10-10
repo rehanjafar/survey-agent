@@ -78,6 +78,12 @@ function list(id, items) {
   }
 }
 function fillSettings(config) {
+  $("answer-provider").value = config.provider;
+  $("chatgpt-model").value = config.chatgptModel;
+  $("auth-domains").value = config.authDomains.join("\n");
+  $("currency").value = config.currency;
+  $("minimum-rate").value = config.minimumHourlyReward;
+  $("max-duration").value = config.maxDurationMinutes;
   $("start-url").value = config.startUrl;
   $("platform").value = config.platform;
   $("ranking").value = config.rankBy;
@@ -162,6 +168,32 @@ async function refresh() {
     "events-list",
     state.events.map((entry) => item(pretty(entry.event), entry.detail, entry.created_at))
   );
+  $("chatgpt-status").textContent = state.chatgpt.status;
+  $("connect-chatgpt").disabled = state.chatgpt.signingIn;
+  $("chatgpt-signin").hidden = !state.chatgpt.signInUrl;
+  if (state.chatgpt.signInUrl) $("chatgpt-signin").href = state.chatgpt.signInUrl;
+  $("chatgpt-models").replaceChildren(
+    ...state.chatgpt.models.map((model) => {
+      const option = document.createElement("option");
+      option.value = model;
+      return option;
+    })
+  );
+  if (!$("chatgpt-model").value && state.chatgpt.models.length)
+    $("chatgpt-model").value = state.chatgpt.models[0];
+  const phone = state.phone;
+  $("phone-server").textContent = phone ? new URL(phone.topicUrl).origin : "—";
+  $("phone-topic").textContent = phone ? new URL(phone.topicUrl).pathname.slice(1) : "—";
+  $("copy-topic").disabled = !phone;
+  $("phone-test").disabled = !phone;
+  $("phone-confirm").disabled = !phone?.tested || phone.confirmed;
+  $("phone-status").textContent = phone?.confirmed
+    ? "Phone delivery confirmed"
+    : phone?.tested
+      ? "Test sent — check your phone, then click I received it"
+      : phone
+        ? "Subscribe on your phone, then send a test"
+        : "Not configured";
   renderReview();
 }
 function choice(parent, name, labelText, value, type = "radio") {
@@ -346,6 +378,15 @@ $("settings-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   await post("settings", {
     ...state.settings,
+    provider: $("answer-provider").value,
+    chatgptModel: $("chatgpt-model").value.trim(),
+    authDomains: $("auth-domains")
+      .value.split(/[\s,]+/)
+      .filter(Boolean)
+      .map((value) => value.toLowerCase()),
+    currency: $("currency").value,
+    minimumHourlyReward: Number($("minimum-rate").value),
+    maxDurationMinutes: Number($("max-duration").value),
     startUrl: $("start-url").value,
     platform: $("platform").value,
     navigationMode: $("navigation-mode").value,
@@ -380,3 +421,33 @@ if (window.location.protocol === "file:") {
   document.body.classList.add("file-preview");
   $("startup-help").hidden = false;
 } else void poll();
+
+$("connect-chatgpt").addEventListener("click", () => post("chatgpt/login"));
+$("refresh-models").addEventListener("click", () => post("chatgpt/models"));
+$("phone-setup").addEventListener("click", () => post("phone/setup"));
+$("phone-test").addEventListener("click", () => post("phone/test"));
+$("phone-confirm").addEventListener("click", () => post("phone/confirm", { received: true }));
+$("copy-topic").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("phone-topic").textContent);
+    notify(
+      "Topic copied. Send it to your phone using your own private notes, or type it carefully in ntfy."
+    );
+  } catch {
+    notify("Select the topic text and copy it manually.");
+  }
+});
+$("platform").addEventListener("change", () => {
+  const presets = {
+    prolific: ["https://app.prolific.com/studies", "app.prolific.com"],
+    branded: ["https://surveys.gobranded.com/", "surveys.gobranded.com"],
+    eureka: ["https://eurekasurveys.com/surveys", "eurekasurveys.com"]
+  };
+  const preset = presets[$("platform").value];
+  if (preset) {
+    $("start-url").value = preset[0];
+    $("domains").value = preset[1];
+    $("auth-domains").value = "";
+    $("minimum-rate").value = "0";
+  }
+});

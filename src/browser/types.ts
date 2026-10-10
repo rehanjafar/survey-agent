@@ -23,6 +23,8 @@ export interface InteractiveControl {
   readonly required: boolean;
   readonly options: readonly SelectChoice[];
   readonly question?: string;
+  readonly questionPrompt?: string;
+  readonly offerText?: string;
   readonly group?: string;
   readonly inputType?: string;
   readonly factKey?: string;
@@ -42,6 +44,8 @@ export interface PageState {
   readonly text: string;
   readonly controls: readonly InteractiveControl[];
   readonly hasCaptcha?: boolean;
+  readonly captchaDetected?: boolean;
+  readonly captchaResponsePresent?: boolean;
   readonly hasAuthentication?: boolean;
   readonly hasUnsupported?: boolean;
   readonly complete?: boolean;
@@ -68,6 +72,7 @@ export interface BrowserSession {
   waitForNavigation(previousUrl: string, timeoutMs?: number): Promise<NavigationState>;
   clickAndDetectNavigation(selector: string, timeoutMs?: number): Promise<NavigationState>;
   currentUrl(): string;
+  blockedNavigationHost?(): string | undefined;
   screenshot?(filePath: string): Promise<void>;
   close(): Promise<void>;
 }
@@ -84,6 +89,7 @@ export interface BrowserAutomationDriver {
 }
 
 export interface ChromiumBrowserOptions {
+  readonly channel?: "chrome";
   readonly navigationMode?: "compatible" | "strict";
   readonly allowedDomains?: readonly string[];
   readonly cdpEndpoint?: string;

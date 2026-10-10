@@ -38,3 +38,17 @@ test-results/
 .idea/
 .vscode/
 *.swp
+
+# ChatGPT plan credentials if a custom data directory is used
+chatgpt-*.json
+chatgpt-*.json.*
+notification.json
+runner.lock
+
+# Guided local configuration
+settings.json
+settings.json.*.tmp
+
+guided-settings.json
+guided-settings.json.*.tmp
+notification.json.tmp

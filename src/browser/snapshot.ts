@@ -105,6 +105,14 @@ export function snapshot(maxText: number): PageState {
         maxLength = attributeNumber("maxlength");
       return {
         kind: kind(element),
+        questionPrompt: question,
+        offerText:
+          element
+            .closest<HTMLElement>(
+              "article,li,[data-testid='study-card'],[data-testid='survey-card'],.study-card,.survey-card"
+            )
+            ?.innerText.trim()
+            .slice(0, 4000) ?? "",
         selector: selectorFor(element),
         id: element.id,
         name: element.getAttribute("name") ?? "",
@@ -156,6 +164,16 @@ export function snapshot(maxText: number): PageState {
     title: document.title,
     text: pageText,
     controls,
+    captchaResponsePresent: Array.from(
+      document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+        '[name="g-recaptcha-response"],[name="h-captcha-response"],[name="cf-turnstile-response"]'
+      )
+    ).some((input) => input.value.trim().length > 0),
+    captchaDetected: Array.from(document.querySelectorAll("iframe")).some(
+      (frame) =>
+        visible(frame) &&
+        /captcha|challenge|verify you are human/i.test(`${frame.title} ${frame.src}`)
+    ),
     hasCaptcha:
       Boolean(
         document.querySelector(

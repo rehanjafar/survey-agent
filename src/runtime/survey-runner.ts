@@ -1,3 +1,6 @@
+import type { ReviewNotification } from "../notifications/ntfy-notifier.js";
+import { PanelSurveyAdapter } from "../platforms/panels/panel-adapter.js";
+import { pageStopReason } from "../validation/page-safety.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -25,6 +28,7 @@ export interface RunnerState {
   pendingNavigation: { hostname: string; canContinue: boolean } | null;
 }
 export class SurveyRunner {
+  private panel: PanelSurveyAdapter | undefined;
   private run: RunRecord | null = null;
   private question: NormalizedQuestion | null = null;
   private reason: string | null = null;
@@ -39,7 +43,8 @@ export class SurveyRunner {
     private readonly store: SqliteStore,
     private readonly makeDriver: (settings: AppSettings) => BrowserAutomationDriver,
     private readonly engineFactory: (settings: AppSettings) => AnswerDecisionEngine,
-    private readonly dataDirectory: string
+    private readonly dataDirectory: string,
+    private readonly notify?: (event: ReviewNotification) => Promise<void>
   ) {}
   public state(): RunnerState {
     return {
@@ -81,6 +86,17 @@ export class SurveyRunner {
     this.launchTask(async () => {
       this.driver = this.makeDriver(settings);
       this.session = await this.driver.createSession();
+      this.panel =
+        settings.platform === "prolific" || settings.platform === "branded"
+          ? new PanelSurveyAdapter(this.session, {
+              platform: settings.platform,
+              startUrl: settings.startUrl,
+              allowedHosts: settings.allowedDomains,
+              currency: settings.currency,
+              minimumHourlyReward: settings.minimumHourlyReward,
+              maxDurationMinutes: settings.maxDurationMinutes
+            })
+          : undefined;
       await this.session.navigate(settings.startUrl);
       if (this.run?.status !== "running") return;
       await this.loop();
@@ -244,6 +260,23 @@ export class SurveyRunner {
         this.status("completed", "Survey completion detected.");
         return;
       }
+      if (this.panel && new URL(page.url).origin === new URL(settings.startUrl).origin) {
+        if (new URL(page.url).pathname !== new URL(settings.startUrl).pathname) {
+          await this.review(
+            "unexpected_page",
+            "Platform account or completion page requires manual review. No completion code is invented."
+          );
+          return;
+        }
+        const opened = await this.panel.openBestOffer();
+        if (opened.status === "review") {
+          await this.review("unexpected_page", `Survey handoff needs review: ${opened.reason}`);
+          return;
+        }
+        this.run.steps++;
+        this.answered.clear();
+        continue;
+      }
       let questions: NormalizedQuestion[];
       try {
         questions = extractQuestions(page);
@@ -329,14 +362,26 @@ export class SurveyRunner {
     if (
       !isAllowedUrl(
         page.url,
-        new Set(this.settings!.allowedDomains),
+        new Set([...this.settings!.allowedDomains, ...this.settings!.authDomains]),
         this.settings!.navigationMode === "compatible"
       )
     )
       reason = "unexpected_page";
-    else if (page.hasCaptcha || /\b(captcha|verify you are human)\b/i.test(page.text))
-      reason = "captcha_detected";
-    else if (page.hasAuthentication) reason = "authentication_required";
+    else if (pageStopReason(page) === "captcha_detected") reason = "captcha_detected";
+    else if (
+      pageStopReason(page) === "authentication_required" ||
+      isAllowedUrl(
+        page.url,
+        new Set(this.settings!.authDomains),
+        this.settings!.navigationMode === "compatible"
+      ) ||
+      !isAllowedUrl(
+        page.url,
+        new Set(this.settings!.allowedDomains),
+        this.settings!.navigationMode === "compatible"
+      )
+    )
+      reason = "authentication_required";
     else if (page.hasUnsupported) reason = "unsupported_question";
     else if (page.validationErrors?.length) reason = "unexpected_page";
     if (!reason) return false;
@@ -412,6 +457,21 @@ export class SurveyRunner {
     this.reason = reason;
     this.status("review", message);
     this.store.recordReview(reason, message);
+    if (this.notify && this.session) {
+      try {
+        await this.notify({
+          reason,
+          host:
+            this.session.pendingNavigation?.()?.hostname ??
+            new URL(this.session.currentUrl()).hostname
+        });
+      } catch {
+        this.status(
+          "review",
+          "Phone alert failed. The run remains stopped for review; check phone setup and connectivity."
+        );
+      }
+    }
     audit(this.store, "review_required", { runId: this.run.id, reason });
     if (this.session?.screenshot) {
       const directory = join(this.dataDirectory, "screenshots");

@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import type { Browser, BrowserContext, Page, Route, CDPSession, Frame } from "playwright";
-import { isAllowedUrl, isAllowedDocument } from "./url-policy.js";
+import { isAllowedUrl, isAllowedDocument, NavigationBlockedError } from "./url-policy.js";
 import { snapshot } from "./snapshot.js";
 import type {
   BrowserAutomationDriver,
@@ -32,7 +32,8 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
       this.context = await chromium.launchPersistentContext(this.options.userDataDirectory, {
         headless: this.options.headless ?? true,
         serviceWorkers: "block",
-        acceptDownloads: false
+        acceptDownloads: false,
+        ...(this.options.channel ? { channel: this.options.channel } : {})
       });
     } else {
       this.browser = await chromium.launch({ headless: this.options.headless ?? true });
@@ -63,7 +64,8 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
       this.options.maxPageTextLength ?? 12000,
       options.reuseContext === false,
       !attached,
-      this.options.navigationMode === "compatible"
+      this.options.navigationMode === "compatible",
+      this.options.navigationMode !== "strict"
     );
     await session.installPolicy();
     return session;
@@ -89,7 +91,8 @@ class PlaywrightBrowserSession implements BrowserSession {
     private readonly maxText: number,
     private readonly ownsContext: boolean,
     private readonly ownsPage: boolean,
-    private readonly compatible: boolean
+    private readonly compatible: boolean,
+    private readonly allowPopups: boolean
   ) {}
   private readonly route = async (route: Route) => {
     const request = route.request();
@@ -135,7 +138,7 @@ class PlaywrightBrowserSession implements BrowserSession {
     const request = route.request();
     this.expectedPopups.delete(request.url());
     const canContinue =
-      this.compatible && request.method() === "GET" && this.isWebUrl(request.url());
+      this.allowPopups && request.method() === "GET" && this.isWebUrl(request.url());
     await route.abort("blockedbyclient");
     if (canContinue && this.isAllowed(request.url())) {
       this.transition = this.page
@@ -150,7 +153,7 @@ class PlaywrightBrowserSession implements BrowserSession {
     }
   }
   private readonly popup = (page: Page) => {
-    if (!this.compatible) this.blocked = true;
+    if (!this.allowPopups) this.blocked = true;
     void page.close().catch(() => undefined);
   };
   private isWebUrl(value: string) {
@@ -246,8 +249,8 @@ class PlaywrightBrowserSession implements BrowserSession {
   }
   private check() {
     if (this.blocked)
-      throw new Error(
-        "Unexpected navigation or popup was blocked. Start a new session after reviewing the allowed domains."
+      throw new NavigationBlockedError(
+        "Navigation blocked: unexpected destination or popup. Start a new session after reviewing the allowed domains."
       );
     if (this.page.url() !== "about:blank") this.assertAllowed(this.page.url());
   }
@@ -260,7 +263,25 @@ class PlaywrightBrowserSession implements BrowserSession {
     await this.transition;
     this.transition = undefined;
     this.check();
-    return this.page.evaluate(snapshot, this.maxText);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const state = await this.page.evaluate(snapshot, this.maxText);
+        this.check();
+        return state;
+      } catch (error) {
+        this.check();
+        if (
+          attempt >= 2 ||
+          !(error instanceof Error) ||
+          !/Execution context was destroyed/.test(error.message)
+        )
+          throw error;
+        await this.page
+          .waitForLoadState("domcontentloaded", { timeout: 1000 })
+          .catch(() => undefined);
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+    }
   }
   public async click(selector: string): Promise<void> {
     this.check();
@@ -313,6 +334,9 @@ class PlaywrightBrowserSession implements BrowserSession {
     await this.click(selector);
     return this.waitForNavigation(previousUrl, timeoutMs);
   }
+  public blockedNavigationHost(): string | undefined {
+    return this.pendingNavigation()?.hostname;
+  }
   public currentUrl(): string {
     return this.page.url();
   }
@@ -331,7 +355,9 @@ class PlaywrightBrowserSession implements BrowserSession {
     if (!this.isAllowed(url)) {
       this.blocked = true;
       this.pending = { url, canContinue: this.isWebUrl(url) };
-      throw new Error("Navigation blocked: target is not on the configured allowlist.");
+      throw new NavigationBlockedError(
+        "Navigation blocked: target is not on the configured allowlist."
+      );
     }
   }
 }

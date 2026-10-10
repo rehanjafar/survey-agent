@@ -1,6 +1,4 @@
-import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 const root = fileURLToPath(new URL("..", import.meta.url));
 if (Number(process.versions.node.split(".")[0]) < 24) {
@@ -10,8 +8,8 @@ if (Number(process.versions.node.split(".")[0]) < 24) {
   process.exit(1);
 }
 try {
-  if (!existsSync(join(root, "node_modules", "playwright"))) {
-    console.log("First launch: downloading app dependencies. No model calls or API charges.");
+  {
+    console.log("Checking app dependencies. No model calls or API charges.");
     // On Windows npm scripts require cmd; every command argument here is fixed, not user input.
     execFileSync(
       process.platform === "win32" ? "cmd.exe" : "npx",

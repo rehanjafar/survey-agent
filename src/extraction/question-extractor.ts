@@ -3,7 +3,12 @@ import type { NormalizedQuestion, SurveyOption } from "../domain/survey.js";
 import { questionFingerprint } from "../normalization/question-normalizer.js";
 
 export function extractCurrentQuestion(state: PageState): NormalizedQuestion | undefined {
-  return extractQuestions(state)[0];
+  try {
+    const questions = extractQuestions(state);
+    return questions.length === 1 ? questions[0] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 export function extractQuestions(state: PageState): NormalizedQuestion[] {
   const controls = state.controls.filter(

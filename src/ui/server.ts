@@ -1,3 +1,9 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { ChatGPTAuth } from "../auth/chatgpt-auth.js";
+import { ChatGPTPlanProvider } from "../providers/chatgpt-plan-provider.js";
+import { NtfyNotifier } from "../notifications/ntfy-notifier.js";
+import { ensurePhoneSetup, readPhoneSetup, savePhoneSetup } from "../notifications/phone-setup.js";
 import { randomBytes } from "node:crypto";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -28,17 +34,35 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
   }
   const store = new SqliteStore(join(dataDirectory, "agent.sqlite"));
   store.recoverRuns();
+  const auth = new ChatGPTAuth(dataDirectory);
+  let authStatus = "Not connected";
+  let models: readonly string[] = [];
+  let signingIn: Promise<void> | undefined;
+  let signInUrl: string | undefined;
+  const plan = (model = "") => new ChatGPTPlanProvider(() => auth.accessToken(), model);
   const runner = new SurveyRunner(
     store,
     (config) =>
       new PlaywrightChromiumBrowser({
-        allowedDomains: config.allowedDomains,
+        allowedDomains: [...config.allowedDomains, ...config.authDomains],
         navigationMode: config.navigationMode,
         headless: config.headless,
-        userDataDirectory: join(dataDirectory, "browser-profile")
+        userDataDirectory:
+          config.platform === "eureka" || config.platform === "generic"
+            ? join(dataDirectory, "browser-profile")
+            : join(dataDirectory, "profiles", config.platform)
       }),
-    (config) => new AnswerDecisionEngine(store, new NoCostProvider(), config.minimumConfidence),
-    dataDirectory
+    (config) =>
+      new AnswerDecisionEngine(
+        store,
+        config.provider === "chatgpt_plan" ? plan(config.chatgptModel) : new NoCostProvider(),
+        config.minimumConfidence
+      ),
+    dataDirectory,
+    async (event) => {
+      const phone = await readPhoneSetup(dataDirectory);
+      if (phone?.confirmed) await new NtfyNotifier(phone.topicUrl).notify(event);
+    }
   );
   const token = randomBytes(32).toString("hex");
   let origin = "";
@@ -109,7 +133,9 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
         runs: store.runs(),
         events: store.events(),
         stats: store.stats(),
-        noCost: true,
+        noCost: settings.provider === "manual",
+        chatgpt: { status: authStatus, models, signingIn: Boolean(signingIn), signInUrl },
+        phone: (await readPhoneSetup(dataDirectory)) ?? null,
         dataDirectory,
         mockUrl: origin + "/mock/eureka"
       });
@@ -127,6 +153,61 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     try {
       const body = await readJson(request);
       switch (pathname) {
+        case "/api/chatgpt/login": {
+          if (signingIn) throw new Error("Sign-in is already open in your browser.");
+          authStatus = "Waiting for browser sign-in";
+          signingIn = auth
+            .signIn(async (url) => {
+              signInUrl = url;
+              const command =
+                process.platform === "darwin"
+                  ? "open"
+                  : process.platform === "win32"
+                    ? "rundll32.exe"
+                    : "xdg-open";
+              await promisify(execFile)(
+                command,
+                process.platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url]
+              ).catch(() => undefined);
+            })
+            .then(async () => {
+              models = await plan().models();
+              authStatus = "Connected";
+            })
+            .catch(() => {
+              authStatus = "Sign-in failed or expired. Try again.";
+            })
+            .finally(() => {
+              signingIn = undefined;
+              signInUrl = undefined;
+            });
+          break;
+        }
+        case "/api/chatgpt/models":
+          models = await plan().models();
+          authStatus = "Connected";
+          break;
+        case "/api/phone/setup":
+          await ensurePhoneSetup(dataDirectory);
+          break;
+        case "/api/phone/test": {
+          const phone = await ensurePhoneSetup(dataDirectory);
+          await new NtfyNotifier(phone.topicUrl).notify({
+            reason: "test_notification",
+            host: "local-agent"
+          });
+          await savePhoneSetup(dataDirectory, { ...phone, tested: true });
+          break;
+        }
+        case "/api/phone/confirm": {
+          z.object({ received: z.literal(true) })
+            .strict()
+            .parse(body);
+          const phone = await readPhoneSetup(dataDirectory);
+          if (!phone?.tested) throw new Error("Send a test alert and check your phone first.");
+          await savePhoneSetup(dataDirectory, { ...phone, confirmed: true });
+          break;
+        }
         case "/api/settings": {
           const run = runner.state().run;
           if (run && ["running", "review", "paused"].includes(run.status))
@@ -179,6 +260,17 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           break;
         }
         case "/api/start":
+          if (settings.provider === "chatgpt_plan") {
+            const phone = await readPhoneSetup(dataDirectory);
+            if (!phone?.confirmed)
+              throw new Error(
+                "Set up phone alerts, send a test, and click I received it before automatic runs."
+              );
+            if (!settings.chatgptModel || !(await plan().models()).includes(settings.chatgptModel))
+              throw new Error(
+                "Connect ChatGPT, choose an available model, and save settings first."
+              );
+          }
           await runner.start(settings);
           break;
         case "/api/demo":
@@ -186,6 +278,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
             ...settings,
             startUrl: origin + "/mock/eureka",
             platform: "eureka",
+            provider: "manual",
             allowedDomains: ["127.0.0.1"],
             headless: true
           });
@@ -260,7 +353,11 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("No local server address.");
       origin = "http://127.0.0.1:" + address.port;
-      if (settings.restartLastRun && store.runs()[0]?.status === "interrupted")
+      if (
+        settings.provider === "manual" &&
+        settings.restartLastRun &&
+        store.runs()[0]?.status === "interrupted"
+      )
         await runner.start(settings);
       return origin;
     },

@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { validateDomainRule } from "../browser/url-policy.js";
 import { z } from "zod";
 
 export function defaultDataDirectory(
@@ -16,13 +17,18 @@ export const settingsSchema = z
   .object({
     startUrl: z.string().url().default("https://eurekasurveys.com/surveys"),
     allowedDomains: z
-      .array(z.string().regex(/^(localhost|\[::1\]|[a-z0-9]+(?:[.-][a-z0-9]+)*)$/))
+      .array(z.string().refine(validateDomainRule))
       .min(1)
       .max(100)
       .default(["eurekasurveys.com", "www.eurekasurveys.com", "localhost", "127.0.0.1"]),
-    platform: z.enum(["generic", "eureka"]).default("eureka"),
+    platform: z.enum(["generic", "eureka", "prolific", "branded"]).default("eureka"),
     navigationMode: z.enum(["compatible", "strict"]).default("compatible"),
-    provider: z.literal("manual").default("manual"),
+    provider: z.enum(["manual", "chatgpt_plan"]).default("manual"),
+    chatgptModel: z.string().default(""),
+    authDomains: z.array(z.string().refine(validateDomainRule)).default([]),
+    currency: z.enum(["USD", "GBP"]).default("USD"),
+    minimumHourlyReward: z.number().nonnegative().finite().default(0),
+    maxDurationMinutes: z.number().positive().finite().default(60),
     headless: z.boolean().default(false),
     autoSubmit: z.boolean().default(false),
     minimumConfidence: z.number().min(0.5).max(1).default(0.9),

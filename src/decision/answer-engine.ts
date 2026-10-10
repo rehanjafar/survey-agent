@@ -39,7 +39,8 @@ export class AnswerDecisionEngine {
   public constructor(
     private readonly store: SqliteStore,
     private readonly provider: LlmProvider,
-    private readonly minimumConfidence = 0.9
+    private readonly minimumConfidence = 0.9,
+    private readonly fallbackProvider?: LlmProvider
   ) {}
   public async decide(question: NormalizedQuestion): Promise<DecisionResult> {
     // A semantic binding must be established by the extractor or a site adapter, never the model.
@@ -86,7 +87,14 @@ export class AnswerDecisionEngine {
         "Add the relevant profile fact or supply an answer in the review panel."
       );
     try {
-      return this.validate(question, await this.provider.decide(payload), "llm");
+      const decision = this.validate(question, await this.provider.decide(payload), "llm");
+      if (
+        decision.status === "review" &&
+        this.fallbackProvider &&
+        ["low_confidence", "unsupported_question"].includes(decision.reason)
+      )
+        return this.validate(question, await this.fallbackProvider.decide(payload), "llm");
+      return decision;
     } catch {
       return this.review(
         "provider_error",

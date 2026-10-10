@@ -61,4 +61,38 @@ describe("AnswerDecisionEngine", () => {
     ).toBe("conflict");
     database.close();
   });
+  it("asks the fallback on low confidence without caching before execution", async () => {
+    const database = store();
+    database.upsertFact({
+      key: "color preference",
+      value: "Blue",
+      kind: "preference",
+      established: true
+    });
+    const primary: LlmProvider = {
+      decide: vi.fn(async () => ({ selectedOption: "Red", confidence: 0.2, reason: "Unsure" }))
+    };
+    const fallback: LlmProvider = {
+      decide: vi.fn(async () => ({ selectedOption: "Blue", confidence: 0.99, reason: "Reviewed" }))
+    };
+    const result = await new AnswerDecisionEngine(database, primary, 0.85, fallback).decide(
+      question
+    );
+    expect(result).toMatchObject({ status: "action", action: { selector: "#blue" } });
+    expect(fallback.decide).toHaveBeenCalledOnce();
+    expect(database.cachedAnswer(question.fingerprint)).toBeUndefined();
+    database.close();
+  });
+
+  it("does not cache an unrecognized or unsupported answer", async () => {
+    const database = store();
+    const primary: LlmProvider = {
+      decide: async () => ({ selectedOption: "Purple", confidence: 0.99, reason: "Invalid" })
+    };
+    expect((await new AnswerDecisionEngine(database, primary).decide(question)).status).toBe(
+      "review"
+    );
+    expect(database.cachedAnswer(question.fingerprint)).toBeUndefined();
+    database.close();
+  });
 });

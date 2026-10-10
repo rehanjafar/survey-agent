@@ -21,12 +21,16 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm build && corepack pnpm test"
+    "check": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm build && corepack pnpm test",
+    "guided": "tsx src/cli/automated.ts start",
+    "setup": "tsx src/cli/automated.ts setup",
+    "agent": "tsx src/cli/automated.ts"
   },
   "dependencies": {
     "dotenv": "^16.6.1",
     "playwright": "^1.57.0",
-    "zod": "^4.1.12"
+    "zod": "^4.1.12",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

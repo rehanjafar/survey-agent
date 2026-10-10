@@ -1,164 +1,178 @@
 # Survey Agent
 
-A local Windows/macOS survey workspace with a browser dashboard, persistent Chromium session, SQLite profile and answer memory, and a review/resume workflow.
+A local dashboard for explicitly authorized survey work on **Prolific, Branded
+Surveys, Eureka, and supported generic survey pages**. It keeps browser logins and
+truthful profile facts on your computer, can use your eligible ChatGPT plan for
+supported answers, and sends **ntfy phone alerts** when you need to intervene.
+No paid API fallback, CAPTCHA solving, authentication bypass, or concealment.
 
-**The dashboard makes no paid model calls.** It automatically reuses established profile facts and confirmed mappings. New questions can be answered in the UI or copied into your normal ChatGPT conversation. ChatGPT handoff is manual; this project does not promise unlimited account usage or automate the ChatGPT website.
+## 1. Download and launch — after merging PR #2
 
-## Install on Windows or macOS
+Use the updated **main** branch after the merge. An older downloaded ZIP will not
+update itself.
 
-### Easiest way to start
+1. Install **Node.js 24 or later** using the installer for your computer from
+   [nodejs.org](https://nodejs.org/en/download). Reopen Terminal/PowerShell afterward.
+2. Open [the repository](https://github.com/rehanjafar/survey-agent), select **main**,
+   click the green **Code** button, then **Download ZIP**. Extract the ZIP completely.
+3. Keep the extracted folder in a normal local folder. Do not open `public/index.html`
+   directly: the dashboard needs its local server.
+4. Launch from the extracted folder:
+   - **Windows:** double-click `Start-Windows.cmd`.
+   - **Mac:** double-click `Start-macOS.command`. If macOS will not run it, use Terminal
+     as shown below instead; no system security settings need to be disabled.
 
-Install Node.js 24 or later, download/extract this branch, then double-click **Start-Windows.cmd** or **Start-macOS.command** in the project folder. The launcher installs missing dependencies, checks Chromium, builds the app and opens the dashboard. Keep its window open. On Mac, if Finder blocks the command file, run `sh Start-macOS.command` from that folder in Terminal.
-
-**Do not open `public/index.html` as the app.** The running dashboard is at **http://127.0.0.1:4317/** (or the custom port shown by the launcher). Start with **1. Try practice**, answer the review cards, then add your profile and connect a website. Setup requires internet access for package/browser downloads but makes no model calls.
-
-### Manual installation
-
-Install **Node.js 24 LTS** from [nodejs.org](https://nodejs.org/). Download this repository as a ZIP and extract it, or clone it with Git. Open a terminal inside the project folder:
-
-```sh
-npm install --global corepack
-corepack pnpm install --frozen-lockfile
-corepack pnpm setup:local
-corepack pnpm start
-```
-
-If Corepack is already installed, omit its installation command. On Windows use PowerShell or Command Prompt. These commands download dependencies and Chromium; setup does not contact a model or open a real survey. Do not copy `node_modules` or browser binaries between operating systems: install them on each laptop.
-
-If installing Corepack reports an existing `yarn.cmd` or requires administrator access, leave your existing tools alone and use this isolated alternative:
+For a fresh Mac download extracted to `Downloads/survey-agent-main`, open Terminal
+and paste these two lines:
 
 ```sh
-npx --yes --package=corepack@0.35.0 -- corepack pnpm install --frozen-lockfile
-npx --yes --package=corepack@0.35.0 -- corepack pnpm setup:local
-node scripts/supervise.mjs
+cd "$HOME/Downloads/survey-agent-main"
+node scripts/launch.mjs
 ```
 
-This uses the same pinned package manager without installing global command shims. The Windows and macOS launchers also run directly through Node after setup.
+On Windows, open the extracted folder in File Explorer, type `powershell` in its
+address bar, press Enter, then run `node scripts/launch.mjs` if the launcher did not
+open. If your folder has another name/location, open a terminal there instead.
 
-Open **http://127.0.0.1:4317**. The dashboard is accessible only from that computer. To use a different port, set `SURVEY_AGENT_PORT` in a local `.env` file before starting. Avoid running multiple app processes on the same data directory.
+The launcher installs the locked dependencies, downloads its own Chromium browser,
+builds the app, and opens **http://127.0.0.1:4317**. Allow several minutes on first
+launch. You do not need to install Git, pnpm, Corepack, or Chrome separately for the
+dashboard. Internet is required for installation. Keep the terminal window open
+while using the agent; use **Stop** in the dashboard before closing it.
 
-Once installed, start with `Start-Windows.cmd`, `Start-macOS.command`, or:
+**Already downloaded an older version?** Stop its run and close its launcher first.
+Download/extract the new main ZIP into a new folder and launch it. Default dashboard
+settings, facts, history, and Eureka login are kept outside the source folder and
+reused. Prolific and Branded each receive a separate saved browser profile. Do not
+run the old and new copies simultaneously. If you previously set a custom
+`SURVEY_AGENT_DATA_DIR`, use the same absolute folder to retain that data.
 
-```sh
-corepack pnpm start:permanent
-```
+## 2. Set up ntfy on your phone — once
 
-On macOS, if Finder will not launch the downloaded command file, run `sh Start-macOS.command` in Terminal. Keep the terminal open, or configure login startup below.
+You have not set this up merely by generating a topic on the computer. Your phone
+must subscribe, and you must verify delivery.
 
-## First run
+1. Install **ntfy** from the [iPhone App Store](https://apps.apple.com/us/app/ntfy/id1625396347)
+   or [Google Play](https://play.google.com/store/apps/details?id=io.heckel.ntfy).
+   Open it and allow notifications.
+2. In Survey Agent, open **Connections & setup** and click **Set up phone alerts**.
+3. The dashboard displays two values:
+   - **Server:** `https://ntfy.sh`
+   - **Topic:** `survey-agent-` followed by random letters and numbers.
+4. In the phone app, tap **+** / **Subscribe to topic**. Keep the server as `ntfy.sh`
+   (or enter `https://ntfy.sh` if asked). In the **topic name** field enter **only**
+   the displayed `survey-agent-…` text, not the full URL. Copy it through your own
+   private notes/message to yourself if typing it is inconvenient. Subscribe.
+5. Back in the dashboard, click **Send test alert**. Your phone should receive
+   **Survey Agent test alert**. Only after you see it, click **I received it**.
 
-1. Open **My profile** and add your actual country, age, household size or preferences. Only confirmed, non-temporary facts can drive automatic answers.
-2. Click **Try local practice**. It runs an Eureka-like offer page and radio, numeric, checkbox, dropdown, text and matrix questions on a local mock server.
-3. Answer unfamiliar questions in the review panel. Enable **Reuse this answer** only for information appropriate for future matching questions.
-4. Configure your survey URL and exact allowed domains under **Connections & setup**.
-5. Start the survey, sign in manually in the dedicated browser if needed, and click **Resume**.
-6. Final submission asks for confirmation by default. Automatic submission is an explicit setting.
+The dashboard now says **Phone delivery confirmed**. It reuses the same topic on
+future launches. No SMS service or account is required for this default public ntfy
+setup. Treat the random topic as private: anyone who knows it may subscribe or
+publish to it. Messages contain a review reason and hostname, not survey answers,
+credentials, or complete survey URLs. [Official ntfy phone guide](https://docs.ntfy.sh/subscribe/phone/).
 
-A run is bounded by a maximum action count. Completion stops that run. Pause leaves its browser available for inspection; Stop closes the managed browser. CAPTCHA, authentication, ambiguity, unfamiliar widgets, profile conflicts, unchanged pages and unsupported frames stop progress for review.
+**No test alert?** Check the server/topic spelling, phone notification permissions,
+and Focus/Do Not Disturb. Open the topic in ntfy to see whether a message arrived.
+On Android, ntfy's instant-delivery option can help with delayed background alerts.
+Do not confirm delivery until an actual notification reaches your phone.
 
-## Eureka support
+An alert does **not** solve a CAPTCHA remotely. Open the survey browser on your
+computer, complete the CAPTCHA or login yourself, then click **Resume** in the
+dashboard. Failed delivery leaves the run stopped for local review.
 
-The adapter discovers recognizable offers and ranks them by displayed reward per minute (or absolute reward). Offers with unknown duration rank below known-duration offers in the per-minute mode. Displayed amounts are not guaranteed earnings.
+## 3. Connect ChatGPT and choose your platform
 
-Question handling supports native labelled radio buttons, checkboxes, single-select dropdowns, text/numeric inputs, radio scales, labelled radio matrices, and conditional fields exposed after an answer. It re-extracts the page after actions and checks browser control values.
+In **Connections & setup**:
 
-Eureka's live website and third-party survey providers have **not** been validated by this project. The same generic question extractor runs on approved third-party domains; it is not restricted to Eureka. Preconfigured provider redirects continue automatically. For a new top-level GET navigation, the dashboard displays the exact hostname and an **Approve provider & continue** button. This approval lasts for the current run only and preserves its browser session. Each additional new domain asks again. Only approve sites you recognize and are authorized to use.
+1. Click **Connect ChatGPT**. Complete the sign-in/authorization in the browser.
+   If no tab opens, use the sign-in link displayed in the dashboard.
+2. Wait for **Connected**. On a later launch, **Refresh available models** checks your
+   saved connection. Choose a model from the available model list.
+3. Select **Automatic — ChatGPT plan** as the answering mode. This uses eligible
+   ChatGPT plan access, not browser copy/paste or an API key. Plan limits and any
+   credits you enable in ChatGPT still apply; it is not a promise of unlimited/free
+   inference. If access is unavailable, the app stops rather than enabling paid API
+   billing. **Saved facts and manual review** remains an optional mode.
+4. Choose **Prolific**, **Branded Surveys**, or **Eureka**. This fills in the starting
+   address and base domain. Add only actual external survey hosts covered by your
+   authorization. Put identity-provider hosts in **Login-only domains** so the agent
+   can reach them without treating them as surveys. Do not paste a URL into a domain
+   field; use a hostname such as `study.example.org` or an explicit `*.example.org` rule.
+5. For Prolific, choose USD or GBP. For Branded, the minimum advertised hourly reward
+   is **points per hour**, not dollars. Set the maximum study duration if desired.
+   These filters apply to Prolific/Branded; Eureka has its own ranking selector.
+6. Keep the browser visible for initial login. Enable **Automatically submit completed
+   surveys** only if you want supported final Submit/Finish controls to run without
+   another confirmation. Click **Save settings**.
 
-**Compatible browser mode** is the dashboard default (including older settings files without a mode). It accepts subdomains of configured sites, allows HTTPS Google reCAPTCHA frames only as embedded verification components on approved pages, and opens ordinary approved new-window GET links in the existing agent tab. This permits the site's own verification flow to load; it does not solve or bypass CAPTCHA. Strict mode restores exact-host navigation and blocks new windows. Unrelated provider domains still require approval. Google's documented verification paths are described in its [reCAPTCHA FAQ](https://developers.google.com/recaptcha/docs/faq).
+Unknown destinations stop for review. The dashboard can explicitly approve a blocked
+GET destination for the current run; it never silently trusts a redirect or replays
+a blocked form submission. After stopping, add a recurring authorized provider to
+settings for future runs. Login-only hosts remain separate from answerable hosts.
 
-**Open a login or survey link in the agent browser**, under Current run, accepts a link you paste while paused. Pressing Open explicitly approves that host for this run. The link opens in the existing browser session and leaves automation paused so you can sign in manually. Do not paste login links into chat. The app does not persist their paths, query strings or fragments in run records, settings or operational logs; the browser and destination necessarily receive the full URL. Dashboard run URLs now show only the origin. Existing historical records are not rewritten.
+## 4. Add your facts, log in, and run
 
-Embedded survey answering, image questions and custom widgets still pause rather than guessing. Cross-provider POST submissions are blocked and never replayed through approval. Popup flows that rely on scripting their opener or POST submission are not supported by the same-tab link handoff. Stop the run before changing persistent allowed domains. There is no CAPTCHA solving, sign-in bypass or invented eligibility information.
+1. Open **My profile** and add your own truthful facts and preferences. Confirm
+   each entry. Missing demographics, experiences, and opinions are not invented.
+2. Optionally use **Try local practice** first. It uses local mock pages and manual
+   mode, not your ChatGPT plan or a real survey account.
+3. Click **Start** on the overview. Complete platform login/verification manually in
+   the survey browser if prompted, then click **Resume**. Sign-ins persist locally.
+   Registration, waitlists, and account approval still require your action.
+4. Supported answers run from established facts, confirmed memory, or your selected
+   ChatGPT model. Review stops show their reason in the dashboard and send an alert
+   if phone delivery has been confirmed. Stop the run before changing settings.
 
-## Mobile use
+The dashboard finishes at detected survey completion; click Start for another run.
+Complex study instructions, consent, platform completion-code forms, unsupported
+widgets, ambiguous controls, and missing facts can require manual review. Never
+invent a completion code. Keep the computer awake and online during runs.
 
-The dashboard layout supports small screens, but this application’s Node/Chromium engine requires a computer. It does **not** run independently on iOS or Android, and the dashboard currently binds only to the host computer. You can operate the computer through trusted remote-desktop software from a phone. Native phone operation and secure paired remote dashboard access are not implemented. Do not expose port 4317 to your LAN or the internet as a workaround.
+## Updating and finding your data
 
-## No-cost answering and ChatGPT
+The dashboard's **Getting started** area shows the actual data folder. Defaults:
 
-- The runnable app accepts only `provider: "manual"`. OpenAI and Anthropic API keys are not read by the dashboard.
-- Deterministic profile matching and cached answers make no model requests.
-- The review panel exports only the current question, choices and relevant facts into a copyable prompt. It does not include the whole page or conversation history.
-- Open ChatGPT, paste the prompt, check the result and paste its JSON answer back. This uses your existing account subject to its own plan limits; the app cannot establish or guarantee unlimited free messages/uploads.
-- OpenAI/Anthropic provider library adapters remain available for developers, with mock-only tests. They are not connected to the no-cost UI.
-- Natural wording is supported for truthful responses. The system does not invent demographics or optimize false claims for survey eligibility.
-
-Relevant official documentation: [Codex authentication](https://learn.chatgpt.com/docs/auth) distinguishes subscription and API access; [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) describes API JSON schemas.
-
-## Keep it running
-
-The supervisor restarts a crashed app with backoff, stopping after five consecutive short failures. It does not keep a sleeping or closed laptop awake. Leave the laptop powered, connected and signed in to its desktop.
-
-**Windows login startup**, after installation, from a normal PowerShell window:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\Install-WindowsStartup.ps1
-```
-
-This registers a per-user Task Scheduler task named `SurveyAgent`. It uses the logged-in desktop rather than a Windows service. To remove it:
-
-```powershell
-Unregister-ScheduledTask -TaskName SurveyAgent
-```
-
-**macOS login startup**:
-
-```sh
-node scripts/macos-startup.mjs install
-```
-
-To remove it:
-
-```sh
-node scripts/macos-startup.mjs remove
-```
-
-Installing login startup is optional; the app never installs it automatically. These installers have not been exercised on a Windows host in this development session. Enterprise device policies can restrict startup registration.
-
-On restart, previous active runs are marked interrupted. **Start a new inspection run after an interrupted application restart** is an optional setting: it opens the configured start URL using the saved session and re-inspects the current page. It does not replay an in-flight action or guarantee exactly-once submission across power loss.
-
-## Storage, backup and corrections
-
-Default data folders:
-
+- Mac: `~/Library/Application Support/SurveyAgent`
 - Windows: `%LOCALAPPDATA%\SurveyAgent`
-- macOS: `~/Library/Application Support/SurveyAgent`
 - Linux: `~/.local/share/survey-agent`
 
-Override with `SURVEY_AGENT_DATA_DIR`. The UI shows the resolved folder under Getting started. A repository-local `.env` is optional and ignored by Git.
+Stop the app before backing up this folder. It contains private facts, browser
+sessions, ChatGPT credentials, and the ntfy topic. Do not commit or publicly share it.
+Older terminal-only runs used `./data`; they are separate and are not silently
+imported into the dashboard. Do not copy an older terminal `settings.json` over the
+dashboard settings. See [advanced commands](docs/advanced.md) if you still use that workflow.
 
-The directory contains `settings.json`, `agent.sqlite`, a dedicated `browser-profile/`, and review-only `screenshots/` (at most 20). SQLite stores stable facts, preferences, temporary facts, reusable mappings, historical answers, corrections, runs, reviews and operational audit events separately. Model prompts and credentials are not written into operational logs.
+## Troubleshooting
 
-Use **Correct** to explicitly change an established fact. The previous value stays in correction history; changes invalidate cached mappings. **Clear reusable answer mappings** preserves profile facts and past answers. Cache entries expire after 30 days; only explicitly marked reusable human answers and deterministic profile answers enter memory.
+| What you see                              | What to do                                                                                           |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `node` is not found                       | Install Node.js 24+ and reopen the terminal/launcher.                                                |
+| Blank page or disconnected                | Use the launcher; browse to `http://127.0.0.1:4317`, not an HTML file.                               |
+| Port already in use                       | Close the older launcher, or open the already-running dashboard.                                     |
+| ChatGPT not connected / model unavailable | Connect or refresh models, select a listed model, save settings. Check account eligibility/usage.    |
+| Automatic run asks for phone setup        | Send a test, receive it on your phone, then click **I received it**.                                 |
+| New provider blocked                      | Review the host and approve only within your authorization. POST handoffs need manual inspection.    |
+| Missing information                       | Add the truthful fact or answer in the review panel.                                                 |
+| CAPTCHA/login alert                       | Resolve in the survey browser, then **Resume**.                                                      |
+| Profile conflict                          | Use the explicit profile correction flow; established facts are not silently replaced.               |
+| No matching offers                        | Check currency, rate and duration filters. Unknown layouts or unavailable offers need manual review. |
 
-Stop the app before backing up or moving the SQLite file and settings. Keep this folder private: it contains personal information and browser credentials, and the database is not encrypted at rest. Establish browser sign-ins separately on each laptop; do not transfer the browser profile. Use the operating system's disk encryption and user account protections.
+## Scope and verification
 
-## Development
+The dashboard supports recognized native radio buttons, checkboxes, dropdowns, text,
+numeric inputs, scales, labelled matrices, and conditional questions. Embedded
+survey frames and custom controls may stop. Prolific/Branded ranking compares
+advertised reward per minute within one unit; actual earnings depend on eligibility,
+time, approval, and availability. Displayed rewards are not recorded as paid income.
+Live platform layouts and account eligibility remain unverified.
 
-```sh
-corepack pnpm dev
-corepack pnpm check
-```
+Use only specifically authorized environments. General
+[Prolific rules](https://participant-help.prolific.com/en/articles/445029-can-i-use-ai-assistance-tools-in-my-submission)
+and [Branded terms](https://surveys.gobranded.com/page/branded-surveys-terms-of-service/)
+restrict AI/automated participation outside applicable authorization. Domain approval
+controls navigation; it does not grant research permission.
 
-`check` runs formatting, lint, strict typechecking, build and tests. All browser tests use locally hosted mock applications; provider tests use synthetic responses. No real survey or paid inference is used by tests.
-
-The GitHub workflow targets Windows, macOS and Linux with Node 24. Local macOS verification is not proof that the remote Windows job has passed.
-
-Module boundaries:
-
-| Component                  | Responsibility                                                                |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| browser                    | Chromium sessions, allowlists, snapshots and verified interactions            |
-| extraction / normalization | Semantic question grouping, conservative fact binding and scoped fingerprints |
-| storage                    | SQLite migrations, profile facts, corrections, memory and run history         |
-| providers                  | Compact typed provider interface, strict response parsing, no-cost handoff    |
-| decision / validation      | Profile/cache-first decisions, contradictions and action validation           |
-| execution / runtime        | Structured actions, bounded runs, pause/review/resume and stale-page checks   |
-| logging / config           | Redacted operational records and validated settings                           |
-| ui / mock                  | Local authenticated dashboard and mock surveys                                |
-
-SQLite migration version 3 uses portable scalar/JSON-text records and string run IDs. A future PostgreSQL implementation will need its own migration and SQL adapter; it is not currently supported.
-
-## Current limits
-
-This is a tested local application, not a certified integration with every Eureka provider. Unknown personal information requires input. Ordinary ChatGPT prompts are manual. Native installers, automatic updates, multi-user hosting, automatic image interpretation, embedded third-party frames and custom widget adapters are not included.
+Developers: `corepack pnpm check` runs formatting, lint, strict TypeScript, build,
+and local mock-browser tests. OAuth/model/ntfy calls are mocked in tests. See
+[AGENTS.md](AGENTS.md) for the repository working agreement.

@@ -14,7 +14,9 @@ const app = await createApplication(dataDirectory);
 try {
   const url = await app.listen(port);
   console.log("Survey Agent — " + url);
-  console.log("No-cost mode: profile, memory and manual ChatGPT handoff. No paid model calls.");
+  console.log(
+    "Open Connections & setup for ChatGPT plan answering and ntfy phone alerts. No paid API fallback."
+  );
   console.log("Local data: " + dataDirectory);
   if (process.env.SURVEY_AGENT_OPEN === "1" || process.argv.includes("--open")) {
     const command =

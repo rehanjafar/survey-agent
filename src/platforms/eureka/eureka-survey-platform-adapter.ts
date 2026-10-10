@@ -1,3 +1,5 @@
+import { pageStopReason } from "../../validation/page-safety.js";
+import { isAllowedUrl, NavigationBlockedError } from "../../browser/url-policy.js";
 import type { BrowserSession, InteractiveControl, PageState } from "../../browser/index.js";
 
 import type {
@@ -8,9 +10,6 @@ import type {
   EurekaSurveyPlatformOptions
 } from "./types.js";
 
-const AUTHENTICATION_PATTERN =
-  /\b(log[ -]?in|sign[ -]?in|password|verification code|two-factor)\b/i;
-const CAPTCHA_PATTERN = /\b(captcha|recaptcha|hcaptcha|verify you are human)\b/i;
 const DURATION_PATTERN = /\b(\d+)\s*(?:min|mins|minutes)\b/i;
 const DOLLAR_PATTERN = /\$\s*(\d+(?:\.\d{1,2})?)/;
 const CENTS_PATTERN = /\b(\d+(?:\.\d+)?)\s*(?:¢|cents?\b)/i;
@@ -67,7 +66,14 @@ export class EurekaSurveyPlatformAdapter {
     }
 
     const selectedOffer = discovery.selectedOffer;
-    const navigation = await this.session.clickAndDetectNavigation(selectedOffer.selector);
+    let navigation;
+    try {
+      navigation = await this.session.clickAndDetectNavigation(selectedOffer.selector);
+    } catch (error) {
+      if (!(error instanceof NavigationBlockedError)) throw error;
+      await this.recordReview("external_redirect", this.session.currentUrl());
+      return { status: "review", reason: "external_redirect" };
+    }
     if (!navigation.navigated) {
       await this.recordReview("unexpected_page", navigation.url);
       return { status: "review", reason: "unexpected_page" };
@@ -78,6 +84,12 @@ export class EurekaSurveyPlatformAdapter {
       return { status: "review", reason: "external_redirect" };
     }
 
+    const state = await this.session.capturePageState();
+    const reviewReason = this.reviewReasonFor(state);
+    if (reviewReason) {
+      await this.recordReview(reviewReason, state.url);
+      return { status: "review", reason: reviewReason };
+    }
     await this.options.auditLogger.record({
       event: "offer_selected",
       host: safeHost(navigation.url),
@@ -93,15 +105,7 @@ export class EurekaSurveyPlatformAdapter {
       return "external_redirect";
     }
 
-    const inspectableText = `${state.title}\n${state.text}`;
-    if (CAPTCHA_PATTERN.test(inspectableText)) {
-      return "captcha_detected";
-    }
-    if (AUTHENTICATION_PATTERN.test(inspectableText)) {
-      return "authentication_required";
-    }
-
-    return undefined;
+    return pageStopReason(state);
   }
 
   private async recordReview(reason: EurekaReviewReason, url: string): Promise<void> {
@@ -183,11 +187,7 @@ function titleFromOfferText(text: string): string {
 }
 
 function isAllowedHost(url: string, allowedHosts: ReadonlySet<string>): boolean {
-  try {
-    return allowedHosts.has(new URL(url).hostname.toLowerCase());
-  } catch {
-    return false;
-  }
+  return isAllowedUrl(url, allowedHosts);
 }
 
 function safeHost(url: string): string {
