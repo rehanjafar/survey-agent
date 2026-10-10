@@ -10,6 +10,8 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
+    "start": "tsx src/cli/main.ts start",
+    "setup": "tsx src/cli/main.ts setup",
     "dev": "tsx src/cli/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

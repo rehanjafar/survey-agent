@@ -174,3 +174,26 @@ it("never answers on an auth-only host and resumes after manual login", async ()
     host: "login.example.test"
   });
 });
+
+it("does not send platform account or completion forms to the answer engine", async () => {
+  const options = setup();
+  expect((await runSurveys({ ...options, surveyPageAllowed: () => false })).reason).toBe(
+    "platform_page_requires_review"
+  );
+  expect(options.engine.decide).not.toHaveBeenCalled();
+  expect(options.session.selectRadio).not.toHaveBeenCalled();
+});
+
+it("reports the blocked destination hostname in the phone alert", async () => {
+  const options = setup();
+  options.session.blockedNavigationHost = () => "unknown-study.test";
+  const result = await runSurveys({
+    ...options,
+    openOffer: async () => ({ status: "review", reason: "external_redirect" })
+  });
+  expect(result.reason).toBe("external_redirect");
+  expect(options.notifier.notify).toHaveBeenCalledWith({
+    reason: "external_redirect",
+    host: "unknown-study.test"
+  });
+});

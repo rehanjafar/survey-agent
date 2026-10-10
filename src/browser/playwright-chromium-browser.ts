@@ -190,6 +190,30 @@ class PlaywrightBrowserSession implements BrowserSession {
   }
 
   public async capturePageState(): Promise<PageState> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const state = await this.readPageState();
+        this.assertUrlAllowed(state.url);
+        return state;
+      } catch (error) {
+        this.assertUrlAllowed(this.currentUrl());
+        if (
+          attempt >= 2 ||
+          !(error instanceof Error) ||
+          !/Execution context was destroyed/.test(error.message)
+        )
+          throw error;
+        // Client-side redirects can replace the document during extraction.
+        // Retry only this navigation race; never repeat a click or relax URL checks.
+        await this.page
+          .waitForLoadState("domcontentloaded", { timeout: 1000 })
+          .catch(() => undefined);
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+    }
+  }
+
+  private async readPageState(): Promise<PageState> {
     this.assertUrlAllowed(this.currentUrl());
     return this.page.evaluate((maxPageTextLength) => {
       const selectorFor = (element: Element): string => {
@@ -298,6 +322,14 @@ class PlaywrightBrowserSession implements BrowserSession {
                 .map((id) => document.getElementById(id)?.textContent?.trim() ?? "")
                 .join(" ") ??
               "",
+            // Use bounded semantic cards, never the whole dashboard (which mixes rewards).
+            offerText:
+              element
+                .closest<HTMLElement>(
+                  "article, li, [data-testid='study-card'], [data-testid='survey-card'], .study-card, .survey-card"
+                )
+                ?.innerText.trim()
+                .slice(0, 4000) ?? "",
             selector: selectorFor(element),
             id: element.id,
             name: element.getAttribute("name") ?? "",
@@ -418,6 +450,10 @@ class PlaywrightBrowserSession implements BrowserSession {
       url: this.currentUrl(),
       navigated: result.kind === "popup" || this.currentUrl() !== previousUrl
     };
+  }
+
+  public blockedNavigationHost(): string | undefined {
+    return this.blockedHost;
   }
 
   public currentUrl(): string {

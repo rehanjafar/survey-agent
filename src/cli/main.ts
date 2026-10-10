@@ -11,16 +11,95 @@ import { NtfyNotifier } from "../notifications/ntfy-notifier.js";
 import { runSurveys } from "../orchestration/survey-runner.js";
 import { resolve } from "node:path";
 import { loadRuntimeConfig } from "../config/runtime-config.js";
+import type { PageState } from "../browser/types.js";
 import { PlaywrightChromiumBrowser } from "../browser/index.js";
 import { EurekaSurveyPlatformAdapter } from "../platforms/eureka/index.js";
 import { ManualChatGPTProvider } from "../providers/index.js";
 import { AnswerDecisionEngine } from "../decision/answer-engine.js";
 import { SqliteStore } from "../storage/sqlite-store.js";
 import { extractCurrentQuestion } from "../extraction/question-extractor.js";
+import { guidedSetup } from "./setup.js";
+import {
+  readSettings,
+  settingsEnvironment,
+  type GuidedSettings
+} from "../config/guided-settings.js";
+import { PanelSurveyAdapter } from "../platforms/panels/panel-adapter.js";
+import { platformPresets } from "../platforms/panels/presets.js";
 import { executeAction } from "../execution/action-executor.js";
 
-const config = loadRuntimeConfig();
-const [command, startUrl] = process.argv.slice(2);
+let config = loadRuntimeConfig();
+let [command, startUrl] = process.argv.slice(2);
+let guided: GuidedSettings | undefined;
+async function openSignIn(url: string): Promise<void> {
+  const executable =
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "rundll32" : "xdg-open";
+  await promisify(execFile)(
+    executable,
+    process.platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url]
+  );
+}
+if (command === "start" || command === "setup") {
+  if (!process.stdin.isTTY)
+    throw new Error("Open a terminal and run corepack pnpm start for the guided menu.");
+  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  const directory = resolve(config.dataDirectory);
+  const setupAuth = new ChatGPTAuth(directory, config.chatgptAccount);
+  const setup = async (): Promise<GuidedSettings> =>
+    guidedSetup(
+      directory,
+      {
+        question: (prompt) => terminal.question(prompt),
+        print: (message) => console.log(message),
+        models: () => new ChatGPTPlanProvider(() => setupAuth.accessToken(), "").models(),
+        signIn: () => setupAuth.signIn(openSignIn).then(() => undefined),
+        testNotification: (topic) =>
+          new NtfyNotifier(topic, config.ntfyToken).notify({
+            reason: "test_notification",
+            host: "local-agent"
+          })
+      },
+      guided,
+      config.ntfyTopicUrl
+    );
+  try {
+    // setup can repair a malformed saved file without requiring the user to edit JSON.
+    if (command === "start") guided = await readSettings(directory);
+    else {
+      try {
+        guided = await readSettings(directory);
+      } catch {
+        /* Replace invalid setup. */
+      }
+    }
+    if (!guided || command === "setup") guided = await setup();
+    if (command === "setup") command = "done";
+    else {
+      for (;;) {
+        console.log(
+          `\n${platformPresets[guided.platform].name}: saved login, ChatGPT plan, phone alerts.\n1. Log in / fix the saved session\n2. Run authorized surveys\n3. Change platform or settings\n4. Exit`
+        );
+        const choice = (await terminal.question("Choose [2]: ")).trim() || "2";
+        if (choice === "3") {
+          guided = await setup();
+          continue;
+        }
+        if (choice === "4") {
+          command = "done";
+          break;
+        }
+        if (choice === "1" || choice === "2") {
+          command = choice === "1" ? "login" : "run";
+          break;
+        }
+      }
+    }
+    config = loadRuntimeConfig({ ...process.env, ...settingsEnvironment(guided, directory) });
+    startUrl = guided.startUrl;
+  } finally {
+    terminal.close();
+  }
+}
 const auth = new ChatGPTAuth(resolve(config.dataDirectory), config.chatgptAccount);
 const notificationFile = resolve(config.dataDirectory, "notification.json");
 async function notifier(): Promise<NtfyNotifier> {
@@ -36,22 +115,13 @@ async function notifier(): Promise<NtfyNotifier> {
   }
   return new NtfyNotifier(topicUrl, config.ntfyToken);
 }
-if (command === "chatgpt-login") {
+if (command === "done") {
+  console.log("Run corepack pnpm start whenever you are ready.");
+} else if (command === "chatgpt-login") {
   console.log(
     "Continue with ChatGPT: authorize Survey Agent to use your ChatGPT plan. No paid API key is used."
   );
-  await auth.signIn(async (url) => {
-    const executable =
-      process.platform === "darwin"
-        ? "open"
-        : process.platform === "win32"
-          ? "rundll32"
-          : "xdg-open";
-    await promisify(execFile)(
-      executable,
-      process.platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url]
-    );
-  });
+  await auth.signIn(openSignIn);
   console.log(
     `ChatGPT account '${config.chatgptAccount}' connected. Manage usage in ChatGPT Settings > Usage.`
   );
@@ -97,12 +167,7 @@ if (command === "chatgpt-login") {
   }
 } else if (!command) {
   console.log(
-    JSON.stringify({
-      status: "ready",
-      version: "0.1.0",
-      llmProvider: config.llmProvider,
-      allowedDomains: config.allowedDomains
-    })
+    "Run corepack pnpm start for guided setup, login, and automated runs. Advanced commands are documented in docs/advanced.md."
   );
 } else {
   if (!["login", "eureka", "run"].includes(command ?? "") || !startUrl)
@@ -153,7 +218,7 @@ if (command === "chatgpt-login") {
       await terminal.question(
         "Log in manually in Chrome, including any verification. Press Enter to save the session and disconnect. "
       );
-      console.log("Session retained. Run eureka with the same profile and start URL.");
+      console.log("Login saved. Run corepack pnpm start and choose Run authorized surveys.");
     } else {
       const adapter = new EurekaSurveyPlatformAdapter(session, {
         startUrl,
@@ -175,14 +240,38 @@ if (command === "chatgpt-login") {
           allowedDomains: new Set([...config.allowedDomains, ...config.surveyDomains]),
           authenticationDomains: new Set(config.authDomains),
           notifier: phoneNotifier,
-          openOffer: () => adapter.openHighestRewardOffer(),
+          openOffer:
+            guided && guided.platform !== "eureka"
+              ? (() => {
+                  const panel = new PanelSurveyAdapter(session, {
+                    platform: guided.platform,
+                    startUrl,
+                    allowedHosts: [...config.allowedDomains, ...config.surveyDomains],
+                    currency: guided.currency,
+                    minimumHourlyReward: guided.minimumHourlyReward,
+                    maxDurationMinutes: guided.maxDurationMinutes
+                  });
+                  return () => panel.openBestOffer();
+                })()
+              : () => adapter.openHighestRewardOffer(),
           startUrl,
           maxSurveys: config.maxSurveys,
           maxSteps: config.maxSteps,
           reviewTimeoutMs: config.reviewTimeoutMs,
+          ...(guided && guided.platform !== "eureka"
+            ? {
+                surveyPageAllowed: (state: PageState) =>
+                  new URL(state.url).origin !== new URL(startUrl).origin
+              }
+            : {}),
           signal: controller.signal
         });
         console.log(JSON.stringify(result));
+        const blockedHost = session.blockedNavigationHost?.();
+        if (blockedHost)
+          console.log(
+            `Blocked destination: ${blockedHost}. In Change settings, add this host only if authorized: login-only hosts for sign-in, external study hosts for surveys. Then restart the run.`
+          );
         if (result.status === "review" && !controller.signal.aborted) {
           if (process.stdin.isTTY)
             await terminal.question(

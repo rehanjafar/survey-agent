@@ -19,6 +19,7 @@ export interface RunnerOptions {
   readonly maxSteps: number;
   readonly reviewTimeoutMs: number;
   readonly pollMs?: number;
+  readonly surveyPageAllowed?: (state: PageState) => boolean;
   readonly signal?: AbortSignal;
   readonly wait?: (ms: number) => Promise<void>;
 }
@@ -40,6 +41,7 @@ export async function runSurveys(options: RunnerOptions): Promise<RunnerResult> 
     } catch {
       /* No raw URL in alerts. */
     }
+    if (reason === "external_redirect") host = session.blockedNavigationHost?.() ?? host;
     await notifier.notify({ reason, host });
   };
   const stop = async (reason: string): Promise<RunnerResult> => {
@@ -109,6 +111,8 @@ export async function runSurveys(options: RunnerOptions): Promise<RunnerResult> 
           await session.navigate(options.startUrl);
           break;
         }
+        if (options.surveyPageAllowed && !options.surveyPageAllowed(state))
+          return await stop("platform_page_requires_review");
         const question = extractCurrentQuestion(state);
         if (!question) return await stop("no_question_found");
         const decision = await options.engine.decide(question);

@@ -40,3 +40,7 @@ chatgpt-*.json
 chatgpt-*.json.*
 notification.json
 runner.lock
+
+# Guided local configuration
+settings.json
+settings.json.*.tmp

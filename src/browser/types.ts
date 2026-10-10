@@ -12,6 +12,7 @@ export interface InteractiveControl {
   readonly kind: InteractiveControlKind;
   readonly inputType?: string;
   readonly questionPrompt?: string;
+  readonly offerText?: string;
   readonly selector: string;
   readonly id: string;
   readonly name: string;
@@ -52,6 +53,7 @@ export interface BrowserSession {
   waitForNavigation(previousUrl: string, timeoutMs?: number): Promise<NavigationState>;
   clickAndDetectNavigation(selector: string, timeoutMs?: number): Promise<NavigationState>;
   currentUrl(): string;
+  blockedNavigationHost?(): string | undefined;
   close(): Promise<void>;
 }
 
