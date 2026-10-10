@@ -58,7 +58,8 @@ export async function runSurveys(options: RunnerOptions): Promise<RunnerResult> 
     return state;
   };
   const stateStopReason = (state: PageState): string | undefined =>
-    !isAllowedUrl(state.url, options.allowedDomains)
+    !isAllowedUrl(state.url, options.allowedDomains) ||
+    isAllowedUrl(state.url, options.authenticationDomains ?? new Set())
       ? "authentication_required"
       : pageStopReason(state);
   const pause = async (reason: string): Promise<boolean> => {

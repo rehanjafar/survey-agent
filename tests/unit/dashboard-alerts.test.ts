@@ -64,3 +64,50 @@ it.each([false, true])(
     }
   }
 );
+
+it("login-only domains take precedence over compatible parent-domain permission", async () => {
+  const store = new SqliteStore(":memory:");
+  const engine = new AnswerDecisionEngine(store, new NoCostProvider());
+  const decide = vi.spyOn(engine, "decide");
+  const page = {
+    url: "https://login.survey.test/",
+    title: "Account",
+    text: "Account details",
+    controls: []
+  };
+  const session = {
+    navigate: async () => page,
+    capturePageState: async () => page,
+    currentUrl: () => page.url,
+    close: async () => {}
+  } as unknown as BrowserSession;
+  const driver = {
+    createSession: async () => session,
+    close: async () => {}
+  } as unknown as BrowserAutomationDriver;
+  const notify = vi.fn(async () => {});
+  const runner = new SurveyRunner(
+    store,
+    () => driver,
+    () => engine,
+    ".",
+    notify
+  );
+  try {
+    await runner.start(
+      settingsSchema.parse({
+        platform: "generic",
+        allowedDomains: ["survey.test"],
+        authDomains: ["login.survey.test"],
+        startUrl: "https://survey.test/",
+        navigationMode: "compatible"
+      })
+    );
+    await runner.idle();
+    expect(runner.state().reason).toBe("authentication_required");
+    expect(decide).not.toHaveBeenCalled();
+  } finally {
+    await runner.stop();
+    store.close();
+  }
+});

@@ -370,6 +370,11 @@ export class SurveyRunner {
     else if (pageStopReason(page) === "captcha_detected") reason = "captcha_detected";
     else if (
       pageStopReason(page) === "authentication_required" ||
+      isAllowedUrl(
+        page.url,
+        new Set(this.settings!.authDomains),
+        this.settings!.navigationMode === "compatible"
+      ) ||
       !isAllowedUrl(
         page.url,
         new Set(this.settings!.allowedDomains),
