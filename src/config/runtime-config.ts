@@ -14,14 +14,24 @@ const environmentSchema = z.object({
   SURVEY_AGENT_AUTH_DOMAINS: z.string().default(""),
   SURVEY_AGENT_SURVEY_DOMAINS: z.string().default(""),
   SURVEY_AGENT_PROFILE_DIR: z.string().optional(),
+  SURVEY_AGENT_CHATGPT_ACCOUNT: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .default("default"),
+  SURVEY_AGENT_CHATGPT_MODEL: z.string().trim().optional(),
+  SURVEY_AGENT_NTFY_TOPIC_URL: z.string().optional(),
+  SURVEY_AGENT_NTFY_TOKEN: z.string().optional(),
+  SURVEY_AGENT_MAX_SURVEYS: z.coerce.number().int().positive().max(1000).default(10),
+  SURVEY_AGENT_MAX_STEPS: z.coerce.number().int().positive().max(1000).default(100),
+  SURVEY_AGENT_REVIEW_TIMEOUT_MINUTES: z.coerce.number().positive().max(1440).default(60),
   SURVEY_AGENT_LLM_PROVIDER: z
-    .enum(["mock", "manual_chatgpt", "openai", "anthropic"])
+    .enum(["mock", "manual_chatgpt", "chatgpt_plan", "openai", "anthropic"])
     .default("mock"),
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional()
 });
 
-export type LlmProviderName = "mock" | "manual_chatgpt" | "openai" | "anthropic";
+export type LlmProviderName = "mock" | "manual_chatgpt" | "chatgpt_plan" | "openai" | "anthropic";
 export type BrowserMode = "attached_chrome" | "managed_chromium";
 
 export interface RuntimeConfig {
@@ -34,6 +44,13 @@ export interface RuntimeConfig {
   readonly profileDirectory: string | undefined;
   readonly cdpEndpoint: string | undefined;
   readonly llmProvider: LlmProviderName;
+  readonly chatgptAccount: string;
+  readonly chatgptModel: string | undefined;
+  readonly ntfyTopicUrl: string | undefined;
+  readonly ntfyToken: string | undefined;
+  readonly maxSurveys: number;
+  readonly maxSteps: number;
+  readonly reviewTimeoutMs: number;
 }
 
 export function loadRuntimeConfig(environment: NodeJS.ProcessEnv = process.env): RuntimeConfig {
@@ -84,7 +101,14 @@ export function loadRuntimeConfig(environment: NodeJS.ProcessEnv = process.env):
     profileDirectory: parsed.SURVEY_AGENT_PROFILE_DIR,
     browserMode: parsed.SURVEY_AGENT_BROWSER_MODE,
     cdpEndpoint: parsed.SURVEY_AGENT_CDP_ENDPOINT,
-    llmProvider: parsed.SURVEY_AGENT_LLM_PROVIDER
+    llmProvider: parsed.SURVEY_AGENT_LLM_PROVIDER,
+    chatgptAccount: parsed.SURVEY_AGENT_CHATGPT_ACCOUNT,
+    chatgptModel: parsed.SURVEY_AGENT_CHATGPT_MODEL || undefined,
+    ntfyTopicUrl: parsed.SURVEY_AGENT_NTFY_TOPIC_URL || undefined,
+    ntfyToken: parsed.SURVEY_AGENT_NTFY_TOKEN || undefined,
+    maxSurveys: parsed.SURVEY_AGENT_MAX_SURVEYS,
+    maxSteps: parsed.SURVEY_AGENT_MAX_STEPS,
+    reviewTimeoutMs: parsed.SURVEY_AGENT_REVIEW_TIMEOUT_MINUTES * 60_000
   };
 }
 

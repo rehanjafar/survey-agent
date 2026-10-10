@@ -11,6 +11,7 @@ export function extractCurrentQuestion(state: PageState): NormalizedQuestion | u
       const key = `${control.kind}:${control.name || control.selector}`;
       grouped.set(key, [...(grouped.get(key) ?? []), control]);
     }
+  if (grouped.size > 1) return undefined;
   const choiceGroup = [...grouped.values()].find((group) => group.length > 0);
   if (choiceGroup) {
     const type = choiceGroup[0]?.kind === "radio" ? "single_choice" : "multiple_choice";
@@ -22,6 +23,11 @@ export function extractCurrentQuestion(state: PageState): NormalizedQuestion | u
       choiceGroup.some((x) => x.required)
     );
   }
+  if (
+    controls.filter((control) => ["select", "text", "textarea", "number"].includes(control.kind))
+      .length > 1
+  )
+    return undefined;
   const dropdown = controls.find((control) => control.kind === "select");
   if (dropdown) {
     const options = dropdown.options
@@ -82,12 +88,15 @@ function toOption(control: InteractiveControl): SurveyOption {
   };
 }
 function questionPrompt(state: PageState, controls: readonly InteractiveControl[]): string {
+  const scoped = controls[0]?.questionPrompt;
+  if (scoped) return scoped;
   const labels = controls.map((control) => control.label).filter(Boolean);
   const text = state.text
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
   return (
+    text.find((line) => !labels.includes(line) && line.endsWith("?")) ??
     text.find((line) => !labels.includes(line) && line.length > 3) ??
     labels[0] ??
     "Untitled question"

@@ -10,6 +10,8 @@ export interface SelectChoice {
 
 export interface InteractiveControl {
   readonly kind: InteractiveControlKind;
+  readonly inputType?: string;
+  readonly questionPrompt?: string;
   readonly selector: string;
   readonly id: string;
   readonly name: string;
@@ -29,6 +31,8 @@ export interface PageState {
   readonly title: string;
   readonly text: string;
   readonly controls: readonly InteractiveControl[];
+  readonly captchaDetected?: boolean;
+  readonly captchaResponsePresent?: boolean;
 }
 
 export interface NavigationState {

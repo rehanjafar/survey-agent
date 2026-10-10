@@ -266,7 +266,11 @@ class PlaywrightBrowserSession implements BrowserSession {
           "input, select, textarea, button, a[href], [role='button']"
         )
       )
-        .filter((element) => !(element instanceof HTMLInputElement && element.type === "hidden"))
+        .filter(
+          (element) =>
+            element.getClientRects().length > 0 &&
+            !(element instanceof HTMLInputElement && element.type === "hidden")
+        )
         .map((element): InteractiveControl => {
           const isSelect = element instanceof HTMLSelectElement;
           const labelledElement =
@@ -285,6 +289,15 @@ class PlaywrightBrowserSession implements BrowserSession {
 
           return {
             kind: kindFor(element),
+            inputType: element instanceof HTMLInputElement ? element.type : "",
+            questionPrompt:
+              element.closest("fieldset")?.querySelector("legend")?.textContent?.trim() ??
+              element
+                .getAttribute("aria-labelledby")
+                ?.split(/\s+/)
+                .map((id) => document.getElementById(id)?.textContent?.trim() ?? "")
+                .join(" ") ??
+              "",
             selector: selectorFor(element),
             id: element.id,
             name: element.getAttribute("name") ?? "",
@@ -314,7 +327,17 @@ class PlaywrightBrowserSession implements BrowserSession {
         url: window.location.href,
         title: document.title,
         text: document.body?.innerText.trim().slice(0, maxPageTextLength) ?? "",
-        controls
+        controls,
+        captchaResponsePresent: Array.from(
+          document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+            '[name="g-recaptcha-response"], [name="h-captcha-response"], [name="cf-turnstile-response"]'
+          )
+        ).some((input) => input.value.trim().length > 0),
+        captchaDetected: Array.from(document.querySelectorAll("iframe")).some(
+          (frame) =>
+            frame.getClientRects().length > 0 &&
+            /captcha|challenge|verify you are human/i.test(`${frame.title} ${frame.src}`)
+        )
       };
     }, this.maxPageTextLength);
   }

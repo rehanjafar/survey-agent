@@ -1,3 +1,4 @@
+import { pageStopReason } from "../../validation/page-safety.js";
 import { isAllowedUrl, NavigationBlockedError } from "../../browser/url-policy.js";
 import type { BrowserSession, InteractiveControl, PageState } from "../../browser/index.js";
 
@@ -9,9 +10,6 @@ import type {
   EurekaSurveyPlatformOptions
 } from "./types.js";
 
-const AUTHENTICATION_PATTERN =
-  /\b(log[ -]?in|sign[ -]?in|password|verification code|two-factor)\b/i;
-const CAPTCHA_PATTERN = /\b(captcha|recaptcha|hcaptcha|verify you are human)\b/i;
 const DURATION_PATTERN = /\b(\d+)\s*(?:min|mins|minutes)\b/i;
 const DOLLAR_PATTERN = /\$\s*(\d+(?:\.\d{1,2})?)/;
 const CENTS_PATTERN = /\b(\d+(?:\.\d+)?)\s*(?:¢|cents?\b)/i;
@@ -106,15 +104,7 @@ export class EurekaSurveyPlatformAdapter {
       return "external_redirect";
     }
 
-    const inspectableText = `${state.title}\n${state.text}`;
-    if (CAPTCHA_PATTERN.test(inspectableText)) {
-      return "captcha_detected";
-    }
-    if (AUTHENTICATION_PATTERN.test(inspectableText)) {
-      return "authentication_required";
-    }
-
-    return undefined;
+    return pageStopReason(state);
   }
 
   private async recordReview(reason: EurekaReviewReason, url: string): Promise<void> {

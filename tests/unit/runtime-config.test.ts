@@ -17,7 +17,14 @@ describe("loadRuntimeConfig", () => {
       profileDirectory: undefined,
       browserMode: "managed_chromium",
       cdpEndpoint: undefined,
-      llmProvider: "mock"
+      llmProvider: "mock",
+      chatgptAccount: "default",
+      chatgptModel: undefined,
+      ntfyTopicUrl: undefined,
+      ntfyToken: undefined,
+      maxSurveys: 10,
+      maxSteps: 100,
+      reviewTimeoutMs: 3600000
     });
   });
 

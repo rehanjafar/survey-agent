@@ -1,125 +1,186 @@
 # Survey Agent
 
-A local, auditable foundation for a browser-based survey agent operating only on authorized survey environments. The project will use deterministic browser actions, compact structured LLM decisions, profile and answer memory, SQLite storage, and human-review stop states.
-
-## Current milestone
-
-The reusable core includes an allowlisted Playwright Chromium driver, generic active-question extraction, normalized question fingerprints, SQLite profile/answer memory, cache-first answer decisions, structured OpenAI/Anthropic provider adapters, and a structured-action executor. Browser integration tests remain local-only.
-
-## Prerequisites
-
-- Node.js 24 or newer
-- Corepack (bundled with supported Node.js releases) to provide pnpm 11
+A local survey agent for explicitly authorized environments. It reuses Playwright,
+Eureka offer discovery, normalized questions, SQLite answer/profile memory, and
+validated structured actions. It can run supported survey pages automatically,
+using your eligible ChatGPT plan, and pause with a phone notification when a human
+needs to resolve a CAPTCHA or login problem.
 
 ## Setup
+
+Requires Node.js 24+, Corepack/pnpm 11, and installed Google Chrome.
 
 ```sh
 corepack pnpm install
 cp .env.example .env
 corepack pnpm check
-corepack pnpm dev
 ```
 
-`SURVEY_AGENT_ALLOWED_DOMAINS` defaults to local addresses in `.env.example`. Browser navigation enforces the configured rules, including redirects and popups.
+Configure these values in `.env`:
 
-## Commands
+```dotenv
+SURVEY_AGENT_ALLOWED_DOMAINS=eurekasurveys.com,*.eurekasurveys.com
+SURVEY_AGENT_AUTH_DOMAINS=
+SURVEY_AGENT_SURVEY_DOMAINS=
+SURVEY_AGENT_LLM_PROVIDER=chatgpt_plan
+SURVEY_AGENT_CHATGPT_ACCOUNT=default
+SURVEY_AGENT_CHATGPT_MODEL=
+SURVEY_AGENT_MAX_SURVEYS=10
+SURVEY_AGENT_MAX_STEPS=100
+SURVEY_AGENT_REVIEW_TIMEOUT_MINUTES=60
+```
 
-| Command                      | Purpose                                          |
-| ---------------------------- | ------------------------------------------------ |
-| `corepack pnpm dev`          | Run the minimal CLI health/configuration report. |
-| `corepack pnpm test`         | Run Vitest tests.                                |
-| `corepack pnpm lint`         | Run ESLint.                                      |
-| `corepack pnpm typecheck`    | Run strict TypeScript validation.                |
-| `corepack pnpm format:check` | Verify Prettier formatting.                      |
-| `corepack pnpm check`        | Run all local quality checks.                    |
+Add your actual authorized identity-provider, routing, and external survey hosts.
+The example does not assert that these are all Eureka hosts. A redirect cannot
+approve its own destination. Unknown destinations stop for configuration review.
 
-## Layout
+### Connect your ChatGPT plan
 
-- `src/config` — environment and runtime configuration
-- `src/cli` — local command-line entrypoint
-- `src/browser`, `src/extraction`, `src/normalization`, `src/storage`, `src/providers`, `src/decision`, `src/validation`, `src/execution`, `src/logging`, `src/domain` — reserved module boundaries for later milestones
-- `tests` — unit, integration, and end-to-end tests; all future browser tests use a local mock survey app
+```sh
+corepack pnpm dev chatgpt-login
+corepack pnpm dev chatgpt-models
+```
 
-## Safety
+Sign in and authorize Survey Agent in the browser. Select a model from the returned
+account-specific list and set `SURVEY_AGENT_CHATGPT_MODEL` in `.env`. Run this once
+per account label; use another `SURVEY_AGENT_CHATGPT_ACCOUNT` label for a different
+account/workspace. Registered client IDs and the host ID are retained across runs.
+Tokens are verified, stored in owner-only files under `data/`, and renewed before
+expiry. A refresh lock prevents concurrent token renewal. A hard crash may leave a
+lock file; remove it only after confirming the original process is no longer running.
+Disconnect access through ChatGPT settings when needed.
 
-Use only authorized, allowlisted environments. The intended agent will stop rather than attempt CAPTCHA solving, authentication bypassing, or unsupported/ambiguous interactions. See [AGENTS.md](AGENTS.md) for development rules.
+This uses the supported [ChatGPT plan usage flow](https://developers.openai.com/siwc/token-sharing-open-source)
+for eligible open-source/local apps. It automates model requests using an OAuth
+grant; it does not type into or read your existing ChatGPT conversations. Requests
+use the public Responses endpoint with `store=false`, streamed through completion.
+No paid API key is used and errors/limits never switch to a paid provider. ChatGPT
+plan limits and any credits you allow in ChatGPT Settings → Usage still apply; set
+the app's credit limits there to match your budget. Account eligibility and live
+sign-in have to be verified with your account; automated tests use mocked OAuth/model
+responses rather than consuming your plan.
 
-## Eureka login and external surveys
+### Enable phone alerts
 
-The CLI now supports an interactive, one-question Eureka handoff. It opens the highest
-reward offer, follows an authorized popup or redirect, and asks for a structured
-answer through your regular ChatGPT chat. It does not yet run surveys unattended
-or automatically submit/advance pages.
+```sh
+corepack pnpm dev notify-setup
+```
 
-1. Set `SURVEY_AGENT_ALLOWED_DOMAINS` to your authorized Eureka hosts (for example
-   `eurekasurveys.com,*.eurekasurveys.com`). Add the actual identity-provider hosts
-   needed by your login to `SURVEY_AGENT_AUTH_DOMAINS`.
-2. Add authorized third-party survey hosts and routing intermediaries to
-   `SURVEY_AGENT_SURVEY_DOMAINS`. Exact hosts are preferred; `*.example.test`
-   explicitly permits the apex and all its subdomains. Redirects never add trust.
-   Unknown destinations are blocked before navigation and require configuration
-   review. Host matching rejects suffix lookalikes, userinfo URLs, non-HTTP(S)
-   protocols, URLs used as rules, and global wildcards. Rules apply to navigation,
-   including frame navigation, rather than third-party image/script requests.
-3. Set `SURVEY_AGENT_LLM_PROVIDER=manual_chatgpt` and run:
+Install ntfy on your phone, subscribe to the printed topic on `ntfy.sh`, and enable
+notifications. Confirm delivery with:
 
-   ```sh
-   corepack pnpm dev login https://eurekasurveys.com/surveys
-   corepack pnpm dev eureka https://eurekasurveys.com/surveys
-   ```
+```sh
+corepack pnpm dev notify-test
+```
 
-   Replace the URL with your actual authorized offer-page URL. Installed Google
-   Chrome is required for these managed CLI commands. Log in yourself, including
-   any CAPTCHA or verification. The dedicated profile under `data/chrome-profile`
-   retains cookies and site storage across runs. Close other agent instances using
-   the same profile. If login expires, repeat `login`; do not copy credentials into
-   configuration or attempt to automate verification.
+The generated random topic is saved in `data/notification.json`. Topic URLs on the
+public server are subscription secrets; don't share them. For an existing or
+access-controlled topic, configure `SURVEY_AGENT_NTFY_TOPIC_URL` and optionally
+`SURVEY_AGENT_NTFY_TOKEN`. Publishing uses HTTPS, a timeout, and rejects redirects.
+See [ntfy's publishing documentation](https://docs.ntfy.sh/publish/) and
+[phone subscription setup](https://docs.ntfy.sh/subscribe/phone/) for device settings.
+Notifications contain only the stop reason and hostname, not survey URLs, questions,
+answers, credentials, screenshots, or browser cookies. Failed delivery stops the
+run for local review. No SMS account or per-message SMS charges are involved.
 
-Separate auth scope means the browser can navigate to a configured login provider,
-while the Eureka adapter refuses to treat that provider as a survey host. Survey
-hosts can have branded/private domains, so a static vendor list cannot be complete.
-For authorized SurveyMonkey environments, its [official allowlist](https://help.surveymonkey.com/en/surveymonkey/account/allow-list/)
-documents `*.surveymonkey.com`, `*.surveymonkey.net`, `*.surveymk.com`, and
-`*.research.net`. Alchemer documents default and branded links under
-`*.alchemer.com` in its [link guide](https://help.alchemer.com/help/share-survey-via-link),
-with regional/private-domain examples in its [private-domain guide](https://help.alchemer.com/help/setting-up-a-link-to-your-survey-using-your-private-domain).
-These are candidate rules to enable only for your authorized destinations, not
-an assertion that Eureka uses those vendors. Add each actual custom host separately.
-No vendor hosts are enabled by default.
+### Log in to Eureka and run
 
-### Reusing an already logged-in Chrome session
+```sh
+corepack pnpm dev login https://eurekasurveys.com/surveys
+corepack pnpm dev run https://eurekasurveys.com/surveys
+```
 
-Use `SURVEY_AGENT_BROWSER_MODE=attached_chrome` with a loopback-only CDP endpoint,
-such as `http://127.0.0.1:9222`. Start a separate Chrome instance with remote
-debugging enabled and a dedicated user-data directory, sign in manually, and
-leave a tab open at the exact start URL. The agent selects by origin and path
-rather than using an arbitrary first tab. It disconnects without closing existing
-Chrome tabs. Navigation rules apply to the entire attached context while the agent is connected; use a dedicated Chrome instance without unrelated tabs. Ordinary Chrome sessions without remote debugging cannot be attached.
-Persistent managed mode is generally easier because it launches the dedicated
-profile automatically. No stealth flags, CAPTCHA solvers, or auth bypass are used.
+Replace the URL with your authorized Eureka offer-page URL. Complete login yourself,
+including CAPTCHA and verification, and reuse the same dedicated profile. The
+managed CLI launches Google Chrome with `data/chrome-profile`; cookies and site
+storage persist between runs. Do not point this at your everyday Chrome profile.
+A runner lock prevents concurrent commands using the same data directory.
 
-## ChatGPT handoff and costs
+The automated command discovers the highest reward offer, follows approved external
+popups/redirects, answers from memory or the ChatGPT plan, applies validated answers,
+and advances through one unambiguous Next/Continue/Submit/Finish control. It returns
+to the offer page after an explicit completion/disqualification page and starts the
+next survey, up to the configured survey/step limits. Routine answers don't require
+copy/paste or confirmation. Ctrl+C interrupts the run and cleans up the runner lock.
 
-`manual_chatgpt` makes zero API requests. Review the displayed question and relevant
-profile facts, paste them into a normal ChatGPT chat, and paste the single-line JSON
-reply back into the terminal. The agent validates the reply against current options,
-requires sufficient confidence, rechecks page state, and asks before applying it.
-Empty or invalid replies stop for human review. Authentication, CAPTCHA, blocked
-hosts, and unsupported questions remain stop states. Only normalized question data
-and relevant facts are shared; browser cookies, selectors, complete pages, and
-credentials are excluded. You decide which personal facts to share.
+A visible CAPTCHA, framed CAPTCHA widget, password field, or login/verification page
+pauses all answering and sends a phone alert. Resolve it in the open Chrome window
+(or through your own remote desktop connection); the agent never solves or bypasses
+it. It resumes only after two successive page captures show the stop condition has
+cleared. It checks again before executing any model decision. The browser stays
+open for other review stops and review timeouts; press Enter or Ctrl+C to disconnect.
 
-The library's `AnswerDecisionEngine` accepts an optional fourth `fallbackProvider`
-argument. A `ManualChatGPTProvider` there receives low-confidence or missing-answer
-results from the primary provider. For zero API usage, use it as the primary provider
-(as the CLI does); using a paid primary still incurs that primary request. Confident
-cached answers remain first. Invalid/unsupported answers are no longer cached.
-Normal ChatGPT account usage limits still apply. The bridge is human-mediated;
-it does not scrape ChatGPT or promise a fully autonomous free model endpoint.
-For an integration initiated from ChatGPT itself, [GPT Actions](https://developers.openai.com/api/docs/actions/introduction)
-are a separate supported architecture, not implemented by this CLI.
+Low confidence, missing facts, unknown hosts, unsupported question types, multiple
+question groups, ambiguous navigation controls, provider/usage failures, and pages
+that don't advance remain review stops. The current generic extractor supports one
+single-choice, dropdown, text, or numeric question per page. Matrices, checkbox
+questions, nested survey frames, and arbitrary multi-question layouts need a specific
+adapter before automatic execution. It does not claim universal survey coverage or
+record inferred earnings as actual payment. Test only against local mocks.
 
-Run `corepack pnpm check` to verify the code. All browser tests use local mock pages,
-including persistent session reuse, external popups, and forbidden redirect requests.
-Keep profile directories, SQLite databases, and personal data out of Git (the default
-`data/` directory is ignored).
+### Import truthful profile facts
+
+Create a local file under `data/`, using facts/preferences you have supplied:
+
+```json
+[
+  { "key": "country", "value": "Canada", "kind": "stable", "established": true },
+  { "key": "color preference", "value": "Blue", "kind": "preference", "established": true }
+]
+```
+
+```sh
+corepack pnpm dev profile-import ./data/profile.json
+```
+
+Only relevant facts go to the model. Missing demographics, experiences, and opinions
+must not be invented. Import conflicts preserve established facts and create a
+review record. Review your facts before importing; the example values are illustrative.
+
+## Authorized navigation model
+
+Exact host rules restrict navigation to that host. Explicit `*.example.test` rules
+permit the apex and its subdomains. Authentication hosts are separate from survey
+hosts: Chrome can follow a configured login provider while the survey runner refuses
+to answer questions there. Malformed rules, global wildcards, URL/userinfo rules,
+non-HTTP(S) destinations, and suffix lookalikes are rejected. Empty allowlists fail
+closed. The driver checks every HTTP redirect hop, including popup/frame navigation;
+third-party image/script requests are outside this navigation policy.
+
+A static vendor list cannot cover branded/private survey domains. Enable candidate
+rules only for destinations covered by your authorization. SurveyMonkey's
+[official allowlist](https://help.surveymonkey.com/en/surveymonkey/account/allow-list/)
+includes `*.surveymonkey.com`, `*.surveymonkey.net`, `*.surveymk.com`, and `*.research.net`.
+Alchemer's [link guide](https://help.alchemer.com/help/share-survey-via-link) documents
+`*.alchemer.com`, with regional/custom-domain examples in its
+[private-domain guide](https://help.alchemer.com/help/setting-up-a-link-to-your-survey-using-your-private-domain).
+These are examples, not a claim that Eureka uses those vendors. Add each actual
+custom host. No vendor hosts are enabled by default.
+
+## Attached Chrome and manual review modes
+
+`SURVEY_AGENT_BROWSER_MODE=attached_chrome` with a loopback CDP endpoint (for example
+`http://127.0.0.1:9222`) reuses a logged-in tab matched by origin and path. Start a
+separate Chrome instance with remote debugging and a dedicated profile, sign in
+manually, and leave the exact offer-page tab open. Ordinary Chrome sessions without
+remote debugging cannot be attached. Existing Chrome tabs remain open on agent
+disconnect; navigation rules apply to the entire attached context while connected,
+so keep unrelated tabs out of that instance. Managed mode blocks service workers
+so navigation requests pass through the guard.
+
+`SURVEY_AGENT_LLM_PROVIDER=manual_chatgpt` with `dev eureka <start URL>` remains an
+optional one-question copy/paste review mode. It makes zero API calls. The library's
+`AnswerDecisionEngine` also accepts an optional fourth fallback provider for
+low-confidence/missing/invalid primary answers. Automated `run` accepts only
+`chatgpt_plan` and never selects an existing paid-key provider implicitly.
+
+## Verification and safety
+
+`corepack pnpm check` runs formatting, lint, strict TypeScript, and unit/browser tests.
+All browser tests use local mock surveys. OAuth, inference, and notifications are
+mocked; no live surveys, real phone messages, or billable requests run in tests.
+
+Never commit credentials, browser profiles, screenshots, personal facts, logs, or
+SQLite databases. The default `data/` directory and credential files are ignored.
+No CAPTCHA solving, authentication bypass, anti-bot evasion, or concealment is
+implemented. See [AGENTS.md](AGENTS.md).
