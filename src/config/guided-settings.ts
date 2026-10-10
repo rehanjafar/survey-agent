@@ -26,7 +26,7 @@ export type GuidedSettings = z.infer<typeof settingsSchema>;
 export async function readSettings(directory: string): Promise<GuidedSettings | undefined> {
   try {
     return settingsSchema.parse(
-      JSON.parse(await readFile(resolve(directory, "settings.json"), "utf8"))
+      JSON.parse(await readFile(resolve(directory, "guided-settings.json"), "utf8"))
     );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -38,7 +38,7 @@ export async function readSettings(directory: string): Promise<GuidedSettings | 
 export async function saveSettings(directory: string, settings: GuidedSettings): Promise<void> {
   const validated = settingsSchema.parse(settings);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const path = resolve(directory, "settings.json");
+  const path = resolve(directory, "guided-settings.json");
   const temporary = `${path}.${process.pid}.tmp`;
   await writeFile(temporary, JSON.stringify(validated, null, 2), { mode: 0o600 });
   await rename(temporary, path);

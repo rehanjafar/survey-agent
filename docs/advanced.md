@@ -1,6 +1,14 @@
-<!-- The guided start menu is documented in the main README. -->
+# Advanced terminal workflow
 
-# Advanced setup and legacy commands
+The desktop dashboard described in [README](../README.md) is the recommended path.
+`pnpm start` now opens that dashboard. The separate terminal workflow remains under
+`corepack pnpm guided` (menu), `corepack pnpm setup` (terminal setup), and
+`corepack pnpm agent <command>` (commands below). Terminal runs use `./data` by
+default and `guided-settings.json`; dashboard data uses the OS application-data
+folder and a separate settings schema. Run only one workflow at a time. Existing
+older terminal settings may need setup rerun; credentials and phone topics remain
+in their original folder. The dashboard preserves the merged PR's richer question
+validation and manual-review UI; the terminal loop supports one question at a time.
 
 A local survey agent for explicitly authorized environments. It reuses Playwright,
 Eureka offer discovery, normalized questions, SQLite answer/profile memory, and
@@ -39,15 +47,16 @@ approve its own destination. Unknown destinations stop for configuration review.
 ### Connect your ChatGPT plan
 
 ```sh
-corepack pnpm dev chatgpt-login
-corepack pnpm dev chatgpt-models
+corepack pnpm agent chatgpt-login
+corepack pnpm agent chatgpt-models
 ```
 
 Sign in and authorize Survey Agent in the browser. Select a model from the returned
 account-specific list and set `SURVEY_AGENT_CHATGPT_MODEL` in `.env`. Run this once
 per account label; use another `SURVEY_AGENT_CHATGPT_ACCOUNT` label for a different
 account/workspace. Registered client IDs and the host ID are retained across runs.
-Tokens are verified, stored in owner-only files under `data/`, and renewed before
+Tokens are verified, stored under `data/` with restrictive POSIX modes where supported
+(Windows uses user-folder permissions), and renewed before
 expiry. A refresh lock prevents concurrent token renewal. A hard crash may leave a
 lock file; remove it only after confirming the original process is no longer running.
 Disconnect access through ChatGPT settings when needed.
@@ -65,14 +74,14 @@ responses rather than consuming your plan.
 ### Enable phone alerts
 
 ```sh
-corepack pnpm dev notify-setup
+corepack pnpm agent notify-setup
 ```
 
 Install ntfy on your phone, subscribe to the printed topic on `ntfy.sh`, and enable
 notifications. Confirm delivery with:
 
 ```sh
-corepack pnpm dev notify-test
+corepack pnpm agent notify-test
 ```
 
 The generated random topic is saved in `data/notification.json`. Topic URLs on the
@@ -88,8 +97,8 @@ run for local review. No SMS account or per-message SMS charges are involved.
 ### Log in to Eureka and run
 
 ```sh
-corepack pnpm dev login https://eurekasurveys.com/surveys
-corepack pnpm dev run https://eurekasurveys.com/surveys
+corepack pnpm agent login https://eurekasurveys.com/surveys
+corepack pnpm agent run https://eurekasurveys.com/surveys
 ```
 
 Replace the URL with your authorized Eureka offer-page URL. Complete login yourself,
@@ -132,7 +141,7 @@ Create a local file under `data/`, using facts/preferences you have supplied:
 ```
 
 ```sh
-corepack pnpm dev profile-import ./data/profile.json
+corepack pnpm agent profile-import ./data/profile.json
 ```
 
 Only relevant facts go to the model. Missing demographics, experiences, and opinions
@@ -170,7 +179,7 @@ disconnect; navigation rules apply to the entire attached context while connecte
 so keep unrelated tabs out of that instance. Managed mode blocks service workers
 so navigation requests pass through the guard.
 
-`SURVEY_AGENT_LLM_PROVIDER=manual_chatgpt` with `dev eureka <start URL>` remains an
+`SURVEY_AGENT_LLM_PROVIDER=manual_chatgpt` with `agent eureka <start URL>` remains an
 optional one-question copy/paste review mode. It makes zero API calls. The library's
 `AnswerDecisionEngine` also accepts an optional fourth fallback provider for
 low-confidence/missing/invalid primary answers. Automated `run` accepts only

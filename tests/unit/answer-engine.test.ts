@@ -61,8 +61,14 @@ describe("AnswerDecisionEngine", () => {
     ).toBe("conflict");
     database.close();
   });
-  it("asks the fallback on low confidence and validates before caching", async () => {
+  it("asks the fallback on low confidence without caching before execution", async () => {
     const database = store();
+    database.upsertFact({
+      key: "color preference",
+      value: "Blue",
+      kind: "preference",
+      established: true
+    });
     const primary: LlmProvider = {
       decide: vi.fn(async () => ({ selectedOption: "Red", confidence: 0.2, reason: "Unsure" }))
     };
@@ -74,7 +80,7 @@ describe("AnswerDecisionEngine", () => {
     );
     expect(result).toMatchObject({ status: "action", action: { selector: "#blue" } });
     expect(fallback.decide).toHaveBeenCalledOnce();
-    expect(database.cachedAnswer(question.fingerprint)?.answer).toBe("Blue");
+    expect(database.cachedAnswer(question.fingerprint)).toBeUndefined();
     database.close();
   });
 

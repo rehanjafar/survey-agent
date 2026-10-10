@@ -23,6 +23,10 @@ data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite-journal
+browser-profile/
+settings.json
+settings.json.tmp
 logs/
 screenshots/
 profiles/
@@ -44,3 +48,7 @@ runner.lock
 # Guided local configuration
 settings.json
 settings.json.*.tmp
+
+guided-settings.json
+guided-settings.json.*.tmp
+notification.json.tmp

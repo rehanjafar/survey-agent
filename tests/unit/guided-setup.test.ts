@@ -65,7 +65,9 @@ it("guides first-time setup, retries invalid inputs, connects the account and pr
   expect(io.signIn).toHaveBeenCalledOnce();
   expect(io.testNotification).toHaveBeenCalledWith("https://ntfy.sh/existing-secret");
   expect(await readSettings(path)).toEqual(result);
-  expect((await stat(join(path, "settings.json"))).mode & 0o777).toBe(0o600);
+  // Windows uses ACLs; POSIX permission bits are only meaningful on Unix.
+  if (process.platform !== "win32")
+    expect((await stat(join(path, "guided-settings.json"))).mode & 0o777).toBe(0o600);
   const config = loadRuntimeConfig(settingsEnvironment(result, path));
   expect(config.allowedDomains).toEqual(["surveys.gobranded.com"]);
   expect(config.profileDirectory).toBe(join(path, "profiles", "branded"));
@@ -88,7 +90,7 @@ it("does not save runnable settings when account eligibility fails", async () =>
 
 it("rejects corrupted settings, unsafe hosts and mismatched start URLs", async () => {
   const path = await directory();
-  await writeFile(join(path, "settings.json"), "invalid");
+  await writeFile(join(path, "guided-settings.json"), "invalid");
   await expect(readSettings(path)).rejects.toThrow("Run corepack pnpm setup");
   const valid = {
     platform: "prolific",

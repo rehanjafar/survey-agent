@@ -10,9 +10,6 @@ export interface SelectChoice {
 
 export interface InteractiveControl {
   readonly kind: InteractiveControlKind;
-  readonly inputType?: string;
-  readonly questionPrompt?: string;
-  readonly offerText?: string;
   readonly selector: string;
   readonly id: string;
   readonly name: string;
@@ -25,6 +22,20 @@ export interface InteractiveControl {
   readonly disabled: boolean;
   readonly required: boolean;
   readonly options: readonly SelectChoice[];
+  readonly question?: string;
+  readonly questionPrompt?: string;
+  readonly offerText?: string;
+  readonly group?: string;
+  readonly inputType?: string;
+  readonly factKey?: string;
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
+  readonly maxLength?: number;
+  readonly matrix?: string;
+  readonly row?: string;
+  readonly rowLabel?: string;
+  readonly scale?: boolean;
 }
 
 export interface PageState {
@@ -32,8 +43,13 @@ export interface PageState {
   readonly title: string;
   readonly text: string;
   readonly controls: readonly InteractiveControl[];
+  readonly hasCaptcha?: boolean;
   readonly captchaDetected?: boolean;
   readonly captchaResponsePresent?: boolean;
+  readonly hasAuthentication?: boolean;
+  readonly hasUnsupported?: boolean;
+  readonly complete?: boolean;
+  readonly validationErrors?: readonly string[];
 }
 
 export interface NavigationState {
@@ -43,6 +59,9 @@ export interface NavigationState {
 }
 
 export interface BrowserSession {
+  openLink?(url: string): Promise<void>;
+  pendingNavigation?(): { hostname: string; canContinue: boolean } | null;
+  approveNavigation?(hostname: string): Promise<void>;
   navigate(url: string): Promise<PageState>;
   capturePageState(): Promise<PageState>;
   click(selector: string): Promise<void>;
@@ -54,6 +73,7 @@ export interface BrowserSession {
   clickAndDetectNavigation(selector: string, timeoutMs?: number): Promise<NavigationState>;
   currentUrl(): string;
   blockedNavigationHost?(): string | undefined;
+  screenshot?(filePath: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -69,13 +89,14 @@ export interface BrowserAutomationDriver {
 }
 
 export interface ChromiumBrowserOptions {
+  readonly channel?: "chrome";
+  readonly navigationMode?: "compatible" | "strict";
   readonly allowedDomains?: readonly string[];
   readonly cdpEndpoint?: string;
-  readonly userDataDirectory?: string;
-  readonly channel?: "chrome";
   readonly headless?: boolean;
   readonly maxPageTextLength?: number;
   readonly mode?: BrowserConnectionMode;
+  readonly userDataDirectory?: string;
 }
 
 export type BrowserConnectionMode = "attached_chrome" | "managed_chromium";

@@ -183,7 +183,7 @@ export async function guidedSetup(
   });
   await saveSettings(directory, settings);
   io.print(
-    `Saved ${preset.name} setup. The start menu lets you log in, run, or change these settings. CAPTCHA alerts require a working phone subscription.`
+    `Saved ${preset.name} setup. The guided menu lets you log in, run, or change these settings. CAPTCHA alerts require a working phone subscription.`
   );
   return settings;
 }

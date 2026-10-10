@@ -28,13 +28,19 @@ export class NtfyNotifier implements ReviewNotifier {
       redirect: "error",
       signal: AbortSignal.timeout(10_000),
       headers: {
-        title: "Survey Agent needs attention",
+        title:
+          event.reason === "test_notification"
+            ? "Survey Agent test alert"
+            : "Survey Agent needs attention",
         priority: event.reason === "captcha_detected" ? "urgent" : "high",
         tags: "warning",
         ...(this.token ? { authorization: `Bearer ${this.token}` } : {})
       },
       // Host and reason only: no survey URL tokens, questions, answers, cookies or screenshots.
-      body: `Paused: ${event.reason} on ${event.host}. Resolve this in the running Chrome window. The agent will recheck before resuming.`
+      body:
+        event.reason === "test_notification"
+          ? "Phone alerts are working. Return to Survey Agent and click I received it."
+          : `Paused: ${event.reason} on ${event.host}. Resolve this in the running Chrome window. The agent will recheck before resuming.`
     });
     if (!response.ok)
       throw new Error(

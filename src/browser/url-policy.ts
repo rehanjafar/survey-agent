@@ -11,7 +11,11 @@ export function validateDomainRule(rule: string): boolean {
   );
 }
 
-export function isAllowedUrl(targetUrl: string, allowedDomains: ReadonlySet<string>): boolean {
+export function isAllowedUrl(
+  targetUrl: string,
+  allowedDomains: ReadonlySet<string>,
+  includeSubdomains = false
+): boolean {
   try {
     const url = new URL(targetUrl);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return false;
@@ -21,9 +25,42 @@ export function isAllowedUrl(targetUrl: string, allowedDomains: ReadonlySet<stri
       if (!validateDomainRule(rule)) return false;
       return rule.startsWith("*.")
         ? host === rule.slice(2) || host.endsWith(`.${rule.slice(2)}`)
-        : host === rule;
+        : host === rule || (includeSubdomains && host.endsWith(`.${rule}`));
     });
   } catch {
     return false;
   }
+}
+
+// Verification frames may load, but are never selected as survey destinations.
+// This does not solve or interact with any challenge.
+export function isVerificationFrame(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      ["www.google.com", "www.recaptcha.net"].includes(url.hostname) &&
+      url.pathname.startsWith("/recaptcha/")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isAllowedDocument(
+  value: string,
+  allowed: ReadonlySet<string>,
+  compatible: boolean,
+  embedded: boolean,
+  parentUrl: string
+): boolean {
+  return (
+    isAllowedUrl(value, allowed, compatible) ||
+    (compatible &&
+      embedded &&
+      isAllowedUrl(parentUrl, allowed, compatible) &&
+      isVerificationFrame(value))
+  );
 }

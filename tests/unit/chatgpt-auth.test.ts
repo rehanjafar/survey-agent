@@ -74,7 +74,8 @@ it("renews and atomically protects credentials without revealing them", async ()
     refreshToken: "rotated",
     clientId: "oaiapp_test"
   });
-  expect((await stat(path)).mode & 0o777).toBe(0o600);
+  // Windows uses ACLs; POSIX permission bits are only meaningful on Unix.
+  if (process.platform !== "win32") expect((await stat(path)).mode & 0o777).toBe(0o600);
 });
 it("rejects missing plan consent without making inference requests", async () => {
   const directory = await mkdtemp(join(tmpdir(), "chatgpt-auth-"));
