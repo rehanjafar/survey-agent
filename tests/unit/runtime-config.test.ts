@@ -12,6 +12,9 @@ describe("loadRuntimeConfig", () => {
       logLevel: "info",
       dataDirectory: "./data",
       allowedDomains: ["localhost", "survey.example.test"],
+      authDomains: [],
+      surveyDomains: [],
+      profileDirectory: undefined,
       browserMode: "managed_chromium",
       cdpEndpoint: undefined,
       llmProvider: "mock"
@@ -32,4 +35,16 @@ describe("loadRuntimeConfig", () => {
       })
     ).toThrow("loopback HTTP(S) URL");
   });
+});
+
+it("loads separate authorization scopes and rejects unsafe rules", () => {
+  const config = loadRuntimeConfig({
+    SURVEY_AGENT_SURVEY_DOMAINS: "*.survey.example.test",
+    SURVEY_AGENT_AUTH_DOMAINS: "login.example.test"
+  });
+  expect(config.surveyDomains).toEqual(["*.survey.example.test"]);
+  expect(config.authDomains).toEqual(["login.example.test"]);
+  expect(() => loadRuntimeConfig({ SURVEY_AGENT_ALLOWED_DOMAINS: "*" })).toThrow(
+    "Invalid domain rule"
+  );
 });

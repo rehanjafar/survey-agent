@@ -16,3 +16,24 @@ describe("isAllowedUrl", () => {
     expect(isAllowedUrl("file:///tmp/survey.html", allowedDomains)).toBe(false);
   });
 });
+
+describe("explicit subdomain rules", () => {
+  const domains = new Set(["*.survey.example.test"]);
+  it("allows the apex and nested subdomains", () => {
+    expect(isAllowedUrl("https://survey.example.test", domains)).toBe(true);
+    expect(isAllowedUrl("https://a.b.survey.example.test", domains)).toBe(true);
+  });
+  it.each([
+    "https://evilsurvey.example.test",
+    "https://survey.example.test.evil.test",
+    "https://user:pass@survey.example.test",
+    "javascript:alert(1)"
+  ])("rejects %s", (url) => {
+    expect(isAllowedUrl(url, domains)).toBe(false);
+  });
+  it("ignores global wildcard and URL rules", () => {
+    expect(isAllowedUrl("https://example.test", new Set(["*", "https://example.test"]))).toBe(
+      false
+    );
+  });
+});

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   BrowserSession,
@@ -186,5 +186,30 @@ describe("EurekaSurveyPlatformAdapter", () => {
       status: "review",
       reason: "external_redirect"
     });
+  });
+  it.each([
+    ["Question: Which color?", "opened"],
+    ["Please complete the CAPTCHA", "captcha_detected"],
+    ["Sign in to continue", "authentication_required"]
+  ])("checks the authorized external destination: %s", async (text, expected) => {
+    const initial = pageState("Available", [offerControl("Survey — $2.00", "#offer")]);
+    const destination = { ...initial, url: "https://tenant.survey.example.test/question", text };
+    const session = new FakeBrowserSession(initial, {
+      previousUrl: initial.url,
+      url: destination.url,
+      navigated: true
+    });
+    vi.spyOn(session, "capturePageState")
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValue(destination);
+    const adapter = new EurekaSurveyPlatformAdapter(session, {
+      startUrl: initial.url,
+      allowedHosts: ["eurekasurveys.com", "*.survey.example.test"],
+      auditLogger: new MemoryAuditLogger()
+    });
+    const result = await adapter.openHighestRewardOffer();
+    expect(
+      expected === "opened" ? result.status : result.status === "review" && result.reason
+    ).toBe(expected);
   });
 });

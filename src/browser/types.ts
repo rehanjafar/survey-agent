@@ -65,6 +65,8 @@ export interface BrowserAutomationDriver {
 export interface ChromiumBrowserOptions {
   readonly allowedDomains?: readonly string[];
   readonly cdpEndpoint?: string;
+  readonly userDataDirectory?: string;
+  readonly channel?: "chrome";
   readonly headless?: boolean;
   readonly maxPageTextLength?: number;
   readonly mode?: BrowserConnectionMode;

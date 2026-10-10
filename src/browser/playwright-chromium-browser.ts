@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, Page, Route } from "playwright";
 
-import { isAllowedUrl } from "./url-policy.js";
+import { isAllowedUrl, NavigationBlockedError } from "./url-policy.js";
 import type {
   BrowserAutomationDriver,
   BrowserSession,
@@ -24,10 +24,12 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
   private readonly maxPageTextLength: number;
   private readonly mode: BrowserConnectionMode;
   private readonly cdpEndpoint: string | undefined;
+  private readonly options: ChromiumBrowserOptions;
 
   public constructor(options: ChromiumBrowserOptions = {}) {
+    this.options = options;
     this.allowedDomains = new Set(
-      options.allowedDomains?.map((domain) => domain.toLowerCase()) ?? []
+      options.allowedDomains?.map((domain) => domain.toLowerCase()) ?? ["localhost", "127.0.0.1"]
     );
     this.headless = options.headless ?? true;
     this.maxPageTextLength = options.maxPageTextLength ?? DEFAULT_MAX_PAGE_TEXT_LENGTH;
@@ -36,7 +38,7 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
   }
 
   public async launch(): Promise<void> {
-    if (this.browser) {
+    if (this.browser || this.sharedContext) {
       return;
     }
 
@@ -49,32 +51,44 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
       return;
     }
 
-    this.browser = await chromium.launch({ headless: this.headless });
+    if (this.options.userDataDirectory) {
+      this.sharedContext = await chromium.launchPersistentContext(this.options.userDataDirectory, {
+        headless: this.headless,
+        serviceWorkers: "block",
+        ...(this.options.channel ? { channel: this.options.channel } : {})
+      });
+    } else {
+      this.browser = await chromium.launch({ headless: this.headless });
+    }
   }
 
   public async createSession(options: BrowserSessionOptions = {}): Promise<BrowserSession> {
     await this.launch();
 
     const reuseContext = options.reuseContext ?? true;
+    if (this.options.userDataDirectory && !reuseContext)
+      throw new Error("Persistent sessions must reuse their context.");
     if (this.mode === "attached_chrome" && !reuseContext) {
       throw new Error("attached_chrome sessions must reuse Chrome's existing default context.");
     }
 
     const context = reuseContext
       ? await this.getOrCreateSharedContext()
-      : await this.getBrowser().newContext();
+      : await this.getBrowser().newContext({ serviceWorkers: "block" });
     const existingPage = this.mode === "attached_chrome";
     const page = existingPage
       ? this.findAttachedPage(context, options.existingPageUrl)
       : await context.newPage();
 
-    return new PlaywrightBrowserSession(
+    const session = new PlaywrightBrowserSession(
       page,
       this.allowedDomains,
       this.maxPageTextLength,
       !reuseContext,
       !existingPage
     );
+    await session.installNavigationGuard();
+    return session;
   }
 
   public async close(): Promise<void> {
@@ -103,7 +117,7 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
         }
         this.sharedContext = context;
       } else {
-        this.sharedContext = await this.getBrowser().newContext();
+        this.sharedContext = await this.getBrowser().newContext({ serviceWorkers: "block" });
       }
     }
 
@@ -125,12 +139,49 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
 
 class PlaywrightBrowserSession implements BrowserSession {
   public constructor(
-    private readonly page: Page,
+    private page: Page,
     private readonly allowedDomains: ReadonlySet<string>,
     private readonly maxPageTextLength: number,
     private readonly ownsContext: boolean,
     private readonly ownsPage: boolean
   ) {}
+
+  private readonly pages = new Set<Page>();
+  private blockedHost: string | undefined;
+  private readonly guard = async (route: Route): Promise<void> => {
+    const request = route.request();
+    if (!request.isNavigationRequest()) {
+      await route.fallback();
+      return;
+    }
+    if (!isAllowedUrl(request.url(), this.allowedDomains)) {
+      this.blockedHost = new URL(request.url()).hostname;
+      await route.abort("blockedbyclient");
+      return;
+    }
+    // Browser-level continue follows HTTP redirects without another routing callback.
+    // Fulfill each single hop instead, forcing the next hop through this guard.
+    const response = await route.fetch({ maxRedirects: 0 });
+    const location = response.headers()["location"];
+    if (location && response.status() >= 300 && response.status() < 400) {
+      const destination = new URL(location, request.url()).href;
+      if (!isAllowedUrl(destination, this.allowedDomains)) {
+        this.blockedHost = new URL(destination).hostname;
+        await response.dispose();
+        await route.abort("blockedbyclient");
+        return;
+      }
+      await route.fulfill({ response, headers: { ...response.headers(), location: destination } });
+    } else {
+      await route.fulfill({ response });
+    }
+    await response.dispose();
+  };
+
+  public async installNavigationGuard(): Promise<void> {
+    this.pages.add(this.page);
+    await this.page.context().route("**/*", this.guard);
+  }
 
   public async navigate(url: string): Promise<PageState> {
     this.assertUrlAllowed(url);
@@ -139,6 +190,7 @@ class PlaywrightBrowserSession implements BrowserSession {
   }
 
   public async capturePageState(): Promise<PageState> {
+    this.assertUrlAllowed(this.currentUrl());
     return this.page.evaluate((maxPageTextLength) => {
       const selectorFor = (element: Element): string => {
         if (element.id) {
@@ -268,22 +320,27 @@ class PlaywrightBrowserSession implements BrowserSession {
   }
 
   public async click(selector: string): Promise<void> {
+    this.assertUrlAllowed(this.currentUrl());
     await this.page.locator(selector).click();
   }
 
   public async type(selector: string, value: string): Promise<void> {
+    this.assertUrlAllowed(this.currentUrl());
     await this.page.locator(selector).fill(value);
   }
 
   public async selectDropdown(selector: string, value: string): Promise<void> {
+    this.assertUrlAllowed(this.currentUrl());
     await this.page.locator(selector).selectOption(value);
   }
 
   public async selectRadio(selector: string): Promise<void> {
+    this.assertUrlAllowed(this.currentUrl());
     await this.page.locator(selector).check();
   }
 
   public async setCheckbox(selector: string, checked: boolean): Promise<void> {
+    this.assertUrlAllowed(this.currentUrl());
     const control = this.page.locator(selector);
     if (checked) {
       await control.check();
@@ -314,8 +371,30 @@ class PlaywrightBrowserSession implements BrowserSession {
     timeoutMs = 5_000
   ): Promise<NavigationState> {
     const previousUrl = this.currentUrl();
+    const source = this.page;
+    const popupPromise = source
+      .waitForEvent("popup", { timeout: timeoutMs })
+      .then((popup) => ({ kind: "popup" as const, popup }))
+      .catch(() => ({ kind: "timeout" as const }));
     await this.click(selector);
-    return this.waitForNavigation(previousUrl, timeoutMs);
+    const navigationPromise = this.waitForNavigation(previousUrl, timeoutMs).then((navigation) => ({
+      kind: "navigation" as const,
+      navigation
+    }));
+    const result = await Promise.race([popupPromise, navigationPromise]);
+    if (result.kind === "popup") {
+      this.pages.add(result.popup);
+      this.page = result.popup;
+      await this.page
+        .waitForLoadState("domcontentloaded", { timeout: timeoutMs })
+        .catch(() => undefined);
+    }
+    this.assertUrlAllowed(this.currentUrl());
+    return {
+      previousUrl,
+      url: this.currentUrl(),
+      navigated: result.kind === "popup" || this.currentUrl() !== previousUrl
+    };
   }
 
   public currentUrl(): string {
@@ -324,8 +403,9 @@ class PlaywrightBrowserSession implements BrowserSession {
 
   public async close(): Promise<void> {
     const context = this.page.context();
+    await context.unroute("**/*", this.guard);
     if (this.ownsPage) {
-      await this.page.close();
+      for (const page of this.pages) await page.close();
     }
     if (this.ownsContext) {
       await context.close();
@@ -333,8 +413,15 @@ class PlaywrightBrowserSession implements BrowserSession {
   }
 
   private assertUrlAllowed(url: string): void {
-    if (this.allowedDomains.size > 0 && !isAllowedUrl(url, this.allowedDomains)) {
-      throw new Error(`Navigation blocked: ${url} is not on the configured allowlist.`);
+    if (this.blockedHost)
+      throw new NavigationBlockedError(
+        `Navigation blocked for host ${this.blockedHost}; review the authorized-domain configuration.`
+      );
+    if (url === "about:blank") return;
+    if (!isAllowedUrl(url, this.allowedDomains)) {
+      throw new NavigationBlockedError(
+        "Navigation blocked: host is not on the configured allowlist."
+      );
     }
   }
 }

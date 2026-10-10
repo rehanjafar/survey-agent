@@ -8,21 +8,41 @@ export class AnswerDecisionEngine {
   public constructor(
     private readonly store: SqliteStore,
     private readonly provider: LlmProvider,
-    private readonly minimumConfidence = 0.85
+    private readonly minimumConfidence = 0.85,
+    private readonly fallbackProvider?: LlmProvider
   ) {}
   public async decide(question: NormalizedQuestion): Promise<DecisionResult> {
     const cached = this.store.cachedAnswer(question.fingerprint);
     if (cached && cached.confidence >= this.minimumConfidence)
       return this.actionFor(question, cached.answer, "cache", cached.confidence);
-    const decision = await this.provider.decide({
+    const payload = {
       question: question.prompt,
       type: question.type,
       options: question.options.map((option) => option.label),
       relevantProfileFacts: this.store
         .relevantFacts(question.prompt)
         .map(({ key, value }) => ({ key, value }))
-    });
-    if (decision.confidence < this.minimumConfidence)
+    };
+    let decision = await this.provider.decide(payload);
+    if (
+      this.fallbackProvider &&
+      (!Number.isFinite(decision.confidence) ||
+        decision.confidence < this.minimumConfidence ||
+        (!decision.selectedOption && !decision.value) ||
+        (question.options.length > 0 &&
+          !question.options.some(
+            (option) =>
+              option.label === (decision.selectedOption ?? decision.value) ||
+              option.id === (decision.selectedOption ?? decision.value)
+          )))
+    ) {
+      decision = await this.fallbackProvider.decide(payload);
+    }
+    if (
+      !Number.isFinite(decision.confidence) ||
+      decision.confidence > 1 ||
+      decision.confidence < this.minimumConfidence
+    )
       return this.review(
         "low_confidence",
         `Model confidence ${decision.confidence} is below ${this.minimumConfidence}.`
@@ -30,12 +50,14 @@ export class AnswerDecisionEngine {
     const answer = decision.selectedOption ?? decision.value;
     if (!answer)
       return this.review("unsupported_question", "Provider returned no executable answer.");
+    const result = this.actionFor(question, answer, "llm", decision.confidence);
+    if (result.status !== "action") return result;
     this.store.saveAnswer({
       fingerprint: question.fingerprint,
       answer,
       confidence: decision.confidence
     });
-    return this.actionFor(question, answer, "llm", decision.confidence);
+    return result;
   }
   private actionFor(
     question: NormalizedQuestion,

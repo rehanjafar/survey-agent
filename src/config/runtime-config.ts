@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validateDomainRule } from "../browser/url-policy.js";
 
 const environmentSchema = z.object({
   SURVEY_AGENT_LOG_LEVEL: z
@@ -10,12 +11,17 @@ const environmentSchema = z.object({
     .enum(["attached_chrome", "managed_chromium"])
     .default("managed_chromium"),
   SURVEY_AGENT_CDP_ENDPOINT: z.string().optional(),
-  SURVEY_AGENT_LLM_PROVIDER: z.enum(["mock", "openai", "anthropic"]).default("mock"),
+  SURVEY_AGENT_AUTH_DOMAINS: z.string().default(""),
+  SURVEY_AGENT_SURVEY_DOMAINS: z.string().default(""),
+  SURVEY_AGENT_PROFILE_DIR: z.string().optional(),
+  SURVEY_AGENT_LLM_PROVIDER: z
+    .enum(["mock", "manual_chatgpt", "openai", "anthropic"])
+    .default("mock"),
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional()
 });
 
-export type LlmProviderName = "mock" | "openai" | "anthropic";
+export type LlmProviderName = "mock" | "manual_chatgpt" | "openai" | "anthropic";
 export type BrowserMode = "attached_chrome" | "managed_chromium";
 
 export interface RuntimeConfig {
@@ -23,6 +29,9 @@ export interface RuntimeConfig {
   readonly dataDirectory: string;
   readonly allowedDomains: readonly string[];
   readonly browserMode: BrowserMode;
+  readonly authDomains: readonly string[];
+  readonly surveyDomains: readonly string[];
+  readonly profileDirectory: string | undefined;
   readonly cdpEndpoint: string | undefined;
   readonly llmProvider: LlmProviderName;
 }
@@ -42,6 +51,18 @@ export function loadRuntimeConfig(environment: NodeJS.ProcessEnv = process.env):
     .map((domain) => domain.trim().toLowerCase())
     .filter(Boolean);
 
+  const parseDomains = (value: string): string[] =>
+    value
+      .split(",")
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean);
+  const authDomains = parseDomains(parsed.SURVEY_AGENT_AUTH_DOMAINS);
+  const surveyDomains = parseDomains(parsed.SURVEY_AGENT_SURVEY_DOMAINS);
+  if ([...allowedDomains, ...authDomains, ...surveyDomains].some((x) => !validateDomainRule(x))) {
+    throw new Error(
+      "Invalid domain rule: use exact hosts or explicit *.host entries, without URLs or global wildcards."
+    );
+  }
   if (allowedDomains.length === 0) {
     throw new Error("SURVEY_AGENT_ALLOWED_DOMAINS must contain at least one domain.");
   }
@@ -58,6 +79,9 @@ export function loadRuntimeConfig(environment: NodeJS.ProcessEnv = process.env):
     logLevel: parsed.SURVEY_AGENT_LOG_LEVEL,
     dataDirectory: parsed.SURVEY_AGENT_DATA_DIR,
     allowedDomains,
+    authDomains,
+    surveyDomains,
+    profileDirectory: parsed.SURVEY_AGENT_PROFILE_DIR,
     browserMode: parsed.SURVEY_AGENT_BROWSER_MODE,
     cdpEndpoint: parsed.SURVEY_AGENT_CDP_ENDPOINT,
     llmProvider: parsed.SURVEY_AGENT_LLM_PROVIDER

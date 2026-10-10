@@ -1,3 +1,4 @@
+import { isAllowedUrl, NavigationBlockedError } from "../../browser/url-policy.js";
 import type { BrowserSession, InteractiveControl, PageState } from "../../browser/index.js";
 
 import type {
@@ -66,7 +67,14 @@ export class EurekaSurveyPlatformAdapter {
     }
 
     const selectedOffer = discovery.selectedOffer;
-    const navigation = await this.session.clickAndDetectNavigation(selectedOffer.selector);
+    let navigation;
+    try {
+      navigation = await this.session.clickAndDetectNavigation(selectedOffer.selector);
+    } catch (error) {
+      if (!(error instanceof NavigationBlockedError)) throw error;
+      await this.recordReview("external_redirect", this.session.currentUrl());
+      return { status: "review", reason: "external_redirect" };
+    }
     if (!navigation.navigated) {
       await this.recordReview("unexpected_page", navigation.url);
       return { status: "review", reason: "unexpected_page" };
@@ -77,6 +85,12 @@ export class EurekaSurveyPlatformAdapter {
       return { status: "review", reason: "external_redirect" };
     }
 
+    const state = await this.session.capturePageState();
+    const reviewReason = this.reviewReasonFor(state);
+    if (reviewReason) {
+      await this.recordReview(reviewReason, state.url);
+      return { status: "review", reason: reviewReason };
+    }
     await this.options.auditLogger.record({
       event: "offer_selected",
       host: safeHost(navigation.url),
@@ -170,11 +184,7 @@ function titleFromOfferText(text: string): string {
 }
 
 function isAllowedHost(url: string, allowedHosts: ReadonlySet<string>): boolean {
-  try {
-    return allowedHosts.has(new URL(url).hostname.toLowerCase());
-  } catch {
-    return false;
-  }
+  return isAllowedUrl(url, allowedHosts);
 }
 
 function safeHost(url: string): string {
