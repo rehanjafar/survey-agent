@@ -48,16 +48,23 @@ describe("local dashboard and autonomous survey loop", () => {
     );
     expect(state.body.noCost).toBe(true);
   });
-  it("automates known facts, reviews unknowns, and completes every supported native control type", async () => {
-    for (const [key, value, kind] of [
-      ["country", "Canada", "stable"],
-      ["age", "30", "stable"],
-      ["preferred_color", "Blue", "preference"]
-    ]) {
-      expect((await api("facts", { key, value, kind, established: true })).status).toBe(200);
-    }
+  it("has no personal-facts API or state", async () => {
+    const state = (await api("state")).body;
+    expect(state).not.toHaveProperty("facts");
+    expect(state.stats).not.toHaveProperty("facts");
+    expect((await api("facts", {})).status).toBe(404);
+    expect((await api("facts/correct", {})).status).toBe(404);
+  });
+  it("reviews manual answers and completes every supported native control type", async () => {
     expect((await api("demo", {})).status).toBe(200);
     await idle();
+    for (const answer of [
+      { selectedOption: "Blue", confidence: 1, reason: "" },
+      { value: "30", confidence: 1, reason: "" }
+    ]) {
+      expect((await api("resume", { answer, remember: true })).status).toBe(200);
+      await idle();
+    }
     expect(app.runner.state()).toMatchObject({
       run: { status: "review" },
       question: { type: "multiple_choice" }
@@ -73,6 +80,12 @@ describe("local dashboard and autonomous survey loop", () => {
         })
       ).status
     ).toBe(200);
+    await idle();
+    expect(app.runner.state().question?.type).toBe("dropdown");
+    await api("resume", {
+      answer: { selectedOption: "Canada", confidence: 1, reason: "" },
+      remember: true
+    });
     await idle();
     expect(app.runner.state()).toMatchObject({
       question: { type: "text" },
@@ -106,11 +119,14 @@ describe("local dashboard and autonomous survey loop", () => {
     page.on("pageerror", (error) => errors.push(error.message));
     try {
       await page.goto(origin);
-      await page.getByRole("button", { name: "My profile", exact: false }).click();
-      await page.waitForFunction(() =>
-        document.getElementById("facts-list")?.textContent?.includes("Canada")
+      await page.waitForFunction(
+        () => document.getElementById("connection")?.textContent === "Connected to local app"
       );
-      expect(await page.getByRole("heading", { name: "Your profile." }).isVisible()).toBe(true);
+      expect(await page.locator("#profile, #fact-form, #fact-count").count()).toBe(0);
+      await page.getByRole("button", { name: "Connections & setup", exact: false }).click();
+      expect(
+        await page.getByRole("button", { name: "Clear reusable answer mappings" }).isVisible()
+      ).toBe(true);
       await page.getByRole("button", { name: "Overview", exact: false }).click();
       await page.screenshot({
         path: join(tmpdir(), "survey-agent-dashboard-desktop.png"),

@@ -3,8 +3,7 @@ import { ManualChatGPTProvider } from "../../src/providers/manual-chatgpt-provid
 const question = {
   question: "Which?",
   type: "single_choice" as const,
-  options: ["A", "B"],
-  relevantProfileFacts: []
+  options: ["A", "B"]
 };
 describe("manual chat bridge", () => {
   it("uses the supplied exchange without network calls", async () => {

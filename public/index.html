@@ -53,7 +53,6 @@
         <button class="nav active" data-panel="overview" aria-current="page">
           <span>◉</span> Overview
         </button>
-        <button class="nav" data-panel="profile"><span>◎</span> My profile</button>
         <button class="nav" data-panel="settings"><span>⚙</span> Connections & setup</button>
         <button class="nav" data-panel="history"><span>↗</span> Activity</button>
         <button class="nav" data-panel="guide"><span>?</span> Getting started</button>
@@ -81,10 +80,6 @@
         </div>
         <div class="stats">
           <article>
-            <span>Saved profile facts</span><strong id="fact-count">0</strong
-            ><small>Information you have provided</small>
-          </article>
-          <article>
             <span>Recorded answers</span><strong id="answer-count">0</strong
             ><small>Verified in the browser</small>
           </article>
@@ -95,15 +90,14 @@
         </div>
         <article id="onboarding" class="card">
           <div class="eyebrow">START HERE · NO EXTERNAL WEBSITE NEEDED</div>
-          <h2>Your first survey in three steps</h2>
+          <h2>Your first survey in two steps</h2>
           <p>
-            Try a practice survey, answer the questions here, then save facts you want reused.
-            Unknown answers always pause for your input.
+            Try a practice survey, then connect ChatGPT to answer questions automatically. Unknown
+            answers always pause for your input.
           </p>
           <div class="button-row">
             <button id="practice-start">1. Try practice</button>
-            <button class="secondary" data-go="profile">2. Add my profile</button>
-            <button class="secondary" data-go="settings">3. Connect a website</button>
+            <button class="secondary" data-go="settings">2. Connect ChatGPT & a website</button>
           </div>
         </article>
         <div class="workspace-grid">
@@ -112,11 +106,11 @@
               <h2>Current run</h2>
               <span id="status" class="status">Ready</span>
             </div>
-            <p id="run-message">Set up your profile and connection, then start a survey.</p>
+            <p id="run-message">Set up your ChatGPT connection, then start a survey.</p>
             <div class="run-url" id="run-url">No active browser session</div>
             <div class="run-details">
               <span>Actions taken <b id="steps">0</b></span
-              ><span>Answer source <b>Profile + memory</b></span>
+              ><span>Answer source <b>ChatGPT + memory</b></span>
             </div>
             <div class="button-row">
               <button id="start">Start survey</button
@@ -162,7 +156,7 @@
                 <span>01</span>
                 <div>
                   <b>Remember what matters</b>
-                  <p>Your profile and confirmed answers stay local.</p>
+                  <p>Confirmed answer history stays local.</p>
                 </div>
               </li>
               <li>
@@ -253,60 +247,6 @@
           widgets may require manual review. Practice runs stay on this computer.
         </div>
       </section>
-      <section id="profile" class="panel" hidden>
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">A CONSISTENT START</div>
-            <h1>Your profile.</h1>
-            <p>
-              Save information you want to reuse. Established facts are never silently replaced.
-            </p>
-          </div>
-        </div>
-        <div class="workspace-grid">
-          <article class="card">
-            <h2>Add a profile fact</h2>
-            <form id="fact-form">
-              <label for="fact-key">Fact</label
-              ><select id="fact-key">
-                <option value="country">Country</option>
-                <option value="age">Age</option>
-                <option value="household_size">Household size</option>
-                <option value="preferred_color">Preferred color</option>
-                <option value="interests">Interests</option>
-                <option value="custom">Custom fact</option>
-              </select>
-              <label for="custom-key" id="custom-label" hidden
-                >Custom name (lowercase, e.g. employment_status)</label
-              ><input id="custom-key" hidden maxlength="80" />
-              <label for="fact-value">Your answer</label
-              ><input id="fact-value" required maxlength="2000" placeholder="For example, Canada" />
-              <label for="fact-kind">Category</label
-              ><select id="fact-kind">
-                <option value="stable">Stable information</option>
-                <option value="preference">Preference</option>
-                <option value="temporary">Temporary / uncertain</option>
-              </select>
-              <label class="check"
-                ><input id="fact-confirmed" type="checkbox" checked /> This information is
-                confirmed</label
-              ><button type="submit">Save fact</button>
-            </form>
-            <p class="hint">
-              Temporary or unconfirmed facts are never used to answer automatically. Adding a fact
-              refreshes the answer cache.
-            </p>
-          </article>
-          <article class="card">
-            <h2>Saved information</h2>
-            <div id="facts-list" class="stack"></div>
-            <p class="hint">
-              Use Correct to explicitly update a fact. Its previous value stays in local history.
-            </p>
-            <button id="clear-memory" class="secondary">Clear reusable answer mappings</button>
-          </article>
-        </div>
-      </section>
       <section id="settings" class="panel" hidden>
         <div class="page-heading">
           <div>
@@ -317,6 +257,11 @@
         </div>
         <article class="card">
           <h2>1. Connect ChatGPT</h2>
+          <p>
+            ChatGPT-plan sign-in does not share your ChatGPT history or memory. To use context in a
+            normal conversation, choose ordinary ChatGPT chat mode and select that conversation in
+            its browser window.
+          </p>
           <p>
             Automatic answers use your eligible ChatGPT plan. No paid API key or paid fallback. Plan
             limits and any credits you enable in ChatGPT still apply.
@@ -336,15 +281,15 @@
         <article class="card">
           <h2>Ordinary ChatGPT fallback</h2>
           <p>
-            A dedicated normal chat can consult your confirmed profile before the agent alerts you.
-            Its browser session is separate from your survey login and ChatGPT plan connection.
+            A normal chat can use its available context before the agent alerts you. Its browser
+            session is separate from your survey login and ChatGPT plan connection.
           </p>
           <button id="open-regular-chat">Open ordinary ChatGPT</button>
           <p id="regular-chat-status">Not opened</p>
           <p>
-            Sign in manually in that window once. The agent sends your confirmed profile and active
-            question to this dedicated chat; it does not overwrite an unsent draft or use an
-            unrelated conversation.
+            Sign in manually in that window once. The agent sends your active question to the normal
+            conversation you select in that window, and reuses it next time. Add missing context
+            there. Unsent drafts are preserved.
           </p>
         </article>
         <article class="card">
@@ -378,7 +323,7 @@
           <h2>3. Choose how to run</h2>
           <label for="answer-provider">Answering mode</label
           ><select id="answer-provider">
-            <option value="manual">Saved facts and manual review</option>
+            <option value="manual">Manual review</option>
             <option value="chatgpt_browser">Automatic — ordinary ChatGPT chat</option>
             <option value="chatgpt_plan">Automatic — ChatGPT plan</option></select
           ><label for="chatgpt-model">ChatGPT model (choose after connecting)</label
@@ -482,13 +427,18 @@
           <div class="callout">
             <b>Save settings before starting.</b>
             <p>
-              Automatic mode requires a connected ChatGPT account, a selected model, confirmed phone
-              alerts, and relevant truthful profile facts. Manual mode remains available. API keys
-              are not used by this dashboard. Stop a run before changing platforms.
+              Automatic mode requires a connected ChatGPT account and confirmed phone alerts.
+              ChatGPT-plan mode also requires a selected model. Manual mode remains available. API
+              keys are not used by this dashboard. Stop a run before changing platforms.
             </p>
           </div>
           <button type="submit">Save settings</button>
         </form>
+        <article class="card">
+          <h2>Answer memory</h2>
+          <p>Clear reusable answers when your information changes.</p>
+          <button id="clear-memory" class="secondary">Clear reusable answer mappings</button>
+        </article>
       </section>
       <section id="history" class="panel" hidden>
         <div class="page-heading">
@@ -525,7 +475,6 @@
           </p>
           <h2>First run</h2>
           <ol>
-            <li>Add your country, age and other reusable information under My profile.</li>
             <li>
               Use Try local practice to learn the review flow without opening an external survey.
             </li>

@@ -1,4 +1,3 @@
-import { optionRepresentsFact } from "./profile-matching.js";
 import { ProviderError } from "../providers/provider-error.js";
 import type { PageState } from "../browser/types.js";
 import type { NormalizedQuestion, ReviewRequired, SurveyAction } from "../domain/survey.js";
@@ -10,26 +9,15 @@ export type DecisionResult =
   | {
       readonly status: "action";
       readonly action: SurveyAction;
-      readonly source: "cache" | "profile" | "llm" | "human" | "survey_memory";
+      readonly source: "cache" | "llm" | "human" | "survey_memory";
       readonly answer?: ProviderDecision;
     }
   | ReviewRequired;
-export function providerQuestion(
-  question: NormalizedQuestion,
-  store: SqliteStore
-): ProviderQuestion {
+export function providerQuestion(question: NormalizedQuestion): ProviderQuestion {
   return {
     question: question.prompt,
-    requiresPersonalFacts:
-      Boolean(question.factKey) ||
-      /^(country|age|gender|income|occupation|household size)[?*: ]*$/i.test(question.prompt) ||
-      /\b(your|you (?:live|own|prefer|work|earn|feel))\b/i.test(question.prompt),
     type: question.type,
     options: question.options.map((option) => option.label),
-    relevantProfileFacts: store
-      .relevantFacts(question.factKey ?? question.prompt)
-      .filter((fact) => fact.established)
-      .map(({ key, value }) => ({ key, value })),
     ...(question.rows.length
       ? {
           rows: question.rows.map((row) => ({
@@ -49,27 +37,6 @@ export class AnswerDecisionEngine {
     private readonly fallbackProvider?: LlmProvider
   ) {}
   public async decide(question: NormalizedQuestion): Promise<DecisionResult> {
-    // A semantic binding must be established by the extractor or a site adapter, never the model.
-    const fact = question.factKey
-      ? this.store
-          .facts()
-          .find(
-            (item) => item.key === question.factKey && item.established && item.kind !== "temporary"
-          )
-      : undefined;
-    const matches = fact
-      ? question.options.filter((option) => optionRepresentsFact(fact.value, option.label))
-      : [];
-    if (fact && (["text", "numeric"].includes(question.type) || matches.length === 1)) {
-      const answer: ProviderDecision = ["text", "numeric"].includes(question.type)
-        ? { value: fact.value, confidence: 1, reason: "Established profile fact." }
-        : {
-            selectedOption: matches[0]!.label,
-            confidence: 1,
-            reason: "Established profile fact."
-          };
-      return this.validate(question, answer, "profile");
-    }
     const cached = this.store.cachedAnswer(question.fingerprint);
     if (cached && cached.confidence >= this.minimumConfidence) {
       try {
@@ -86,16 +53,7 @@ export class AnswerDecisionEngine {
         return this.review("contradiction", "Stored answer no longer matches this question.");
       }
     }
-    const payload = providerQuestion(question, this.store);
-    if (payload.relevantProfileFacts.length === 0 && payload.requiresPersonalFacts)
-      return this.provider.canRetrieveConfirmedFacts
-        ? this.fromFallback(question, payload, this.provider)
-        : this.fallbackProvider?.canRetrieveConfirmedFacts
-          ? this.fromFallback(question, payload)
-          : this.review(
-              "missing_information",
-              "Add the relevant profile fact or supply an answer in the review panel."
-            );
+    const payload = providerQuestion(question);
     try {
       const decision = this.validate(question, await this.provider.decide(payload), "llm");
       if (
@@ -158,8 +116,7 @@ export class AnswerDecisionEngine {
           question:
             "Which ONE of these visible controls proceeds to the next survey/study page? Choose only an unambiguous continuation or start action. Never choose consent, account changes, payments, completion codes or final submission. If unclear return confidence 0.",
           type: "single_choice",
-          options,
-          relevantProfileFacts: []
+          options
         })
       );
       const index = options.indexOf(answer.selectedOption ?? "");
@@ -187,21 +144,11 @@ export class AnswerDecisionEngine {
   private validate(
     question: NormalizedQuestion,
     input: ProviderDecision,
-    source: "cache" | "profile" | "llm" | "human" | "survey_memory"
+    source: "cache" | "llm" | "human" | "survey_memory"
   ): DecisionResult {
     const answer = parseDecision(input) as ProviderDecision;
     if (answer.confidence < this.minimumConfidence)
       return this.review("low_confidence", "The answer needs your confirmation.");
-    const fact = question.factKey
-      ? this.store
-          .facts()
-          .find(
-            (item) => item.key === question.factKey && item.established && item.kind !== "temporary"
-          )
-      : undefined;
-    const value = answer.value ?? answer.selectedOption;
-    if (fact && value !== undefined && !optionRepresentsFact(fact.value, value))
-      return this.review("contradiction", "The answer conflicts with an established profile fact.");
     const remembered = this.store.cachedAnswer(question.fingerprint);
     if (remembered && source === "human") {
       try {

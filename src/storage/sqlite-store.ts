@@ -2,23 +2,10 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-export type FactKind = "stable" | "preference" | "temporary";
-export interface ProfileFact {
-  readonly key: string;
-  readonly value: string;
-  readonly kind: FactKind;
-  readonly established: boolean;
-}
 export interface CachedAnswer {
   readonly fingerprint: string;
   readonly answer: string;
   readonly confidence: number;
-}
-interface StoredProfileFact {
-  key: string;
-  value: string;
-  kind: FactKind;
-  established: number;
 }
 export interface RunRecord {
   id: string;
@@ -44,80 +31,6 @@ export class SqliteStore {
   public clearMemory(): void {
     this.database.exec("DELETE FROM question_answers");
     this.recordEvent("memory_cleared", "{}");
-  }
-  public correctFact(fact: ProfileFact, expectedValue: string): void {
-    const current = this.facts().find((item) => item.key === fact.key);
-    if (!current || current.value !== expectedValue)
-      throw new Error("The fact changed. Refresh before correcting it.");
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      this.database
-        .prepare(
-          "INSERT INTO fact_history(id,key,previous_value,new_value,created_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)"
-        )
-        .run(randomUUID(), fact.key, current.value, fact.value);
-      this.database
-        .prepare(
-          "UPDATE profile_facts SET value=?,kind=?,established=?,updated_at=CURRENT_TIMESTAMP WHERE key=?"
-        )
-        .run(fact.value, fact.kind, Number(fact.established), fact.key);
-      this.database.exec("DELETE FROM question_answers");
-      this.database.exec("COMMIT");
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-    this.recordEvent("profile_correction", "{}");
-  }
-  public facts(): ProfileFact[] {
-    return (
-      this.database
-        .prepare("SELECT key,value,kind,established FROM profile_facts ORDER BY key")
-        .all() as unknown as StoredProfileFact[]
-    ).map((fact) => ({ ...fact, established: Boolean(fact.established) }));
-  }
-  public upsertFact(fact: ProfileFact): "stored" | "conflict" {
-    const existing = this.facts().find((item) => item.key === fact.key);
-    if (
-      existing?.established &&
-      (existing.value !== fact.value || !fact.established || existing.kind !== fact.kind)
-    ) {
-      this.recordReview(
-        "contradiction",
-        "An established profile fact requires explicit correction."
-      );
-      return "conflict";
-    }
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      this.database
-        .prepare(
-          "INSERT INTO profile_facts(key,value,kind,established,updated_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value,kind=excluded.kind,established=excluded.established,updated_at=CURRENT_TIMESTAMP"
-        )
-        .run(fact.key, fact.value, fact.kind, Number(fact.established));
-      // Any profile update invalidates dependent memory conservatively.
-      this.database.exec("DELETE FROM question_answers");
-      this.database.exec("COMMIT");
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-    return "stored";
-  }
-  public relevantFacts(prompt: string): ProfileFact[] {
-    const words = new Set(
-      prompt
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}]+/u)
-        .filter((word) => word.length > 2)
-    );
-    return this.facts()
-      .filter(
-        (fact) =>
-          fact.kind !== "temporary" &&
-          fact.key.split(/[_. -]/).some((word) => words.has(word.toLowerCase()))
-      )
-      .slice(0, 12);
   }
   public cachedAnswer(fingerprint: string): CachedAnswer | undefined {
     return this.database
@@ -193,7 +106,6 @@ export class SqliteStore {
   }
   public stats() {
     return {
-      facts: this.facts().length,
       answers: Number(
         this.database.prepare("SELECT COUNT(*) AS count FROM answer_history").get()?.count ?? 0
       ),
@@ -204,18 +116,16 @@ export class SqliteStore {
   }
   private migrate(): void {
     const version = Number(this.database.prepare("PRAGMA user_version").get()?.user_version ?? 0);
-    if (version > 3) throw new Error("Database is newer than this application.");
+    if (version > 4) throw new Error("Database is newer than this application.");
     this.database.exec("BEGIN IMMEDIATE");
     try {
       this.database
-        .exec(`CREATE TABLE IF NOT EXISTS profile_facts (key TEXT PRIMARY KEY, value TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('stable','preference','temporary')), established INTEGER NOT NULL, updated_at TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS question_answers (fingerprint TEXT PRIMARY KEY, answer TEXT NOT NULL, confidence REAL NOT NULL, updated_at TEXT NOT NULL);
+        .exec(`CREATE TABLE IF NOT EXISTS question_answers (fingerprint TEXT PRIMARY KEY, answer TEXT NOT NULL, confidence REAL NOT NULL, updated_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS review_items (id INTEGER PRIMARY KEY, reason TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,status TEXT NOT NULL,url TEXT NOT NULL,steps INTEGER NOT NULL,message TEXT NOT NULL,updated_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS answer_history(id TEXT PRIMARY KEY,run_id TEXT NOT NULL,fingerprint TEXT NOT NULL,answer TEXT NOT NULL,source TEXT NOT NULL,created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS audit_events(id TEXT PRIMARY KEY,event TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS fact_history(id TEXT PRIMARY KEY,key TEXT NOT NULL,previous_value TEXT NOT NULL,new_value TEXT NOT NULL,created_at TEXT NOT NULL);
-        PRAGMA user_version=3;`);
+        PRAGMA user_version=4;`);
       this.database.exec("COMMIT");
     } catch (error) {
       this.database.exec("ROLLBACK");

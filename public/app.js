@@ -5,7 +5,6 @@ let state;
 let loadedSettings = false;
 let questionKey = "";
 let posting = false;
-let editingFact = null;
 const pretty = (value) => String(value).replaceAll("_", " ");
 // Keep the task needing attention above summary cards, especially on narrow screens.
 $("overview").insertBefore($("review-panel"), document.querySelector(".stats"));
@@ -102,7 +101,6 @@ async function refresh() {
   if (document.body.classList.contains("disconnected")) $("notice").hidden = true;
   document.body.classList.remove("disconnected");
   $("connection").textContent = "Connected to local app";
-  $("fact-count").textContent = state.stats.facts;
   $("answer-count").textContent = state.stats.answers;
   $("mapping-count").textContent = state.stats.mappings;
   const run = state.run;
@@ -110,7 +108,7 @@ async function refresh() {
   $("status").textContent = pretty(status);
   $("status").dataset.status = status;
   $("run-message").textContent =
-    run?.message || "Set up your profile and connection, then start a survey.";
+    run?.message || "Set up your ChatGPT connection, then start a survey.";
   $("run-url").textContent = run?.url || state.settings.startUrl;
   $("steps").textContent = run?.steps || 0;
   const active = ["running", "review", "paused"].includes(status);
@@ -128,34 +126,6 @@ async function refresh() {
     fillSettings(state.settings);
     loadedSettings = true;
   }
-  list(
-    "facts-list",
-    state.facts.map((fact) => {
-      const row = item(
-        pretty(fact.key),
-        fact.value,
-        pretty(fact.kind) + " · " + (fact.established ? "confirmed" : "unconfirmed")
-      );
-      const edit = document.createElement("button");
-      edit.className = "secondary";
-      edit.textContent = "Correct";
-      edit.addEventListener("click", () => {
-        editingFact = fact;
-        $("fact-key").value = "custom";
-        $("custom-key").value = fact.key;
-        $("custom-key").hidden = false;
-        $("custom-key").required = true;
-        $("custom-label").hidden = false;
-        $("fact-value").value = fact.value;
-        $("fact-kind").value = fact.kind;
-        $("fact-confirmed").checked = fact.established;
-        $("fact-value").focus();
-        notify("Editing " + pretty(fact.key) + ". Saving asks you to confirm this correction.");
-      });
-      row.append(edit);
-      return row;
-    })
-  );
   list(
     "runs-list",
     state.runs.map((entry) =>
@@ -345,37 +315,8 @@ $("import-answer").addEventListener("click", () => {
     notify("Paste valid JSON without Markdown code fences.", true);
   }
 });
-$("fact-key").addEventListener("change", () => {
-  const custom = $("fact-key").value === "custom";
-  $("custom-key").hidden = !custom;
-  $("custom-label").hidden = !custom;
-  $("custom-key").required = custom;
-});
-$("fact-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const fact = {
-    key: $("fact-key").value === "custom" ? $("custom-key").value : $("fact-key").value,
-    value: $("fact-value").value,
-    kind: $("fact-kind").value,
-    established: $("fact-confirmed").checked
-  };
-  if (editingFact && editingFact.key === fact.key) {
-    if (
-      !window.confirm(
-        "Confirm this profile correction? The old value will remain in history and cached mappings will be cleared."
-      )
-    )
-      return;
-    await post("facts/correct", { ...fact, expectedValue: editingFact.value, confirmed: true });
-    editingFact = null;
-  } else {
-    await post("facts", fact);
-  }
-});
 $("clear-memory").addEventListener("click", () => {
-  if (
-    window.confirm("Clear reusable answer mappings? Profile facts and answer history will be kept.")
-  )
+  if (window.confirm("Clear reusable answer mappings? Answer history will be kept."))
     void post("memory/clear", { confirmed: true });
 });
 $("settings-form").addEventListener("submit", async (event) => {

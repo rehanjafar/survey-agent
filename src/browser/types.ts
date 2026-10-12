@@ -27,7 +27,6 @@ export interface InteractiveControl {
   readonly offerText?: string;
   readonly group?: string;
   readonly inputType?: string;
-  readonly factKey?: string;
   readonly min?: number;
   readonly max?: number;
   readonly step?: number;

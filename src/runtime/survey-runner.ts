@@ -58,7 +58,7 @@ export class SurveyRunner {
       run: this.run ? { ...this.run } : null,
       question: this.question,
       reason: this.reason,
-      prompt: this.question ? chatPrompt(providerQuestion(this.question, this.store)) : null,
+      prompt: this.question ? chatPrompt(providerQuestion(this.question)) : null,
       busy: Boolean(this.task),
       pendingNavigation: this.session?.pendingNavigation?.() ?? null
     };
@@ -457,7 +457,7 @@ export class SurveyRunner {
     action: SurveyAction,
     answer: ProviderDecision | undefined,
     source: string,
-    remember = source === "profile"
+    remember = false
   ): Promise<void> {
     if (this.run?.status !== "running") return;
     await executeAction(this.session!, action);

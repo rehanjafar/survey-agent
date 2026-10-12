@@ -34,8 +34,6 @@ afterAll(async () => {
 it("completes multiple local surveys without routine operator prompts", async () => {
   const browser = new PlaywrightChromiumBrowser({ allowedDomains: ["127.0.0.1"] });
   const store = new SqliteStore(":memory:");
-  store.upsertFact({ key: "color", value: "Blue", kind: "preference", established: true });
-  store.upsertFact({ key: "size", value: "Large", kind: "preference", established: true });
   try {
     const session = await browser.createSession();
     await session.navigate(`${baseUrl}/offers`);

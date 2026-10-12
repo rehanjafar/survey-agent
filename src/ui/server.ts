@@ -36,12 +36,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
   }
   const store = new SqliteStore(join(dataDirectory, "agent.sqlite"));
   store.recoverRuns();
-  const regularChat = new ChatGPTBrowserProvider(dataDirectory, () =>
-    store
-      .facts()
-      .filter((fact) => fact.established && fact.kind !== "temporary")
-      .map(({ key, value }) => ({ key, value }))
-  );
+  const regularChat = new ChatGPTBrowserProvider(dataDirectory);
   const auth = new ChatGPTAuth(dataDirectory);
   let authStatus = (await auth.credentials())
     ? "Saved ChatGPT connection — use Test ChatGPT to verify"
@@ -146,7 +141,6 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
       json(response, 200, {
         settings,
         ...runner.state(),
-        facts: store.facts(),
         runs: store.runs(),
         events: store.events(),
         stats: store.stats(),
@@ -221,8 +215,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
             const answer = await plan(input.model).decide({
               question: "What is 2 + 2?",
               type: "single_choice",
-              options: ["4", "5"],
-              relevantProfileFacts: []
+              options: ["4", "5"]
             });
             if (answer.selectedOption !== "4" || answer.confidence < 0.9)
               throw new ProviderError(
@@ -269,45 +262,12 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           settings = updated;
           break;
         }
-        case "/api/facts/correct": {
-          const correction = z
-            .object({
-              key: z.string().min(1).max(80),
-              value: z.string().trim().min(1).max(2000),
-              kind: z.enum(["stable", "preference", "temporary"]),
-              established: z.boolean(),
-              expectedValue: z.string(),
-              confirmed: z.literal(true)
-            })
-            .strict()
-            .parse(body);
-          if (runner.state().busy) throw new Error("Pause the run before correcting facts.");
-          store.correctFact(correction, correction.expectedValue);
-          break;
-        }
         case "/api/memory/clear": {
           z.object({ confirmed: z.literal(true) })
             .strict()
             .parse(body);
           if (runner.state().busy) throw new Error("Pause the run before clearing memory.");
           store.clearMemory();
-          break;
-        }
-        case "/api/facts": {
-          const fact = z
-            .object({
-              key: z.string().regex(/^[a-z][a-z0-9_ .-]{0,79}$/),
-              value: z.string().trim().min(1).max(2000),
-              kind: z.enum(["stable", "preference", "temporary"]),
-              established: z.boolean()
-            })
-            .strict()
-            .parse(body);
-          if (runner.state().busy) throw new Error("Pause the run before changing profile facts.");
-          if (store.upsertFact(fact) === "conflict")
-            throw new Error(
-              "This conflicts with an established fact. The existing fact has been preserved."
-            );
           break;
         }
         case "/api/start":

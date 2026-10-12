@@ -109,42 +109,15 @@ describe("validation and no-cost guarantees", () => {
       validateAnswer(base, { selectedOption: "Canada", value: "Canada", confidence: 1, reason: "" })
     ).toThrow();
   });
-  it("uses profile facts before the model and rejects conflicts before browser execution", async () => {
+  it("reviews personal answers when the provider reports missing context", async () => {
     const store = new SqliteStore(":memory:");
-    try {
-      store.upsertFact({ key: "country", value: "Canada", kind: "stable", established: true });
-      const provider = { decide: vi.fn() };
-      const engine = new AnswerDecisionEngine(store, provider);
-      expect(await engine.decide({ ...base, factKey: "country" })).toMatchObject({
-        status: "action",
-        source: "profile"
-      });
-      expect(provider.decide).not.toHaveBeenCalled();
-      expect(
-        engine.human(
-          { ...base, factKey: "country" },
-          { selectedOption: "United States", confidence: 1, reason: "" }
-        )
-      ).toMatchObject({ status: "review", reason: "contradiction" });
-      expect(store.stats().mappings).toBe(0);
-      store.correctFact(
-        { key: "country", value: "United States", kind: "stable", established: true },
-        "Canada"
-      );
-      expect(store.facts()[0]?.value).toBe("United States");
-    } finally {
-      store.close();
-    }
-  });
-  it("does not infer personal answers from missing facts", async () => {
-    const store = new SqliteStore(":memory:");
-    const provider = { decide: vi.fn() };
+    const provider = { decide: vi.fn(async () => ({ confidence: 0, reason: "Missing context" })) };
     try {
       expect(await new AnswerDecisionEngine(store, provider).decide(base)).toMatchObject({
         status: "review",
-        reason: "missing_information"
+        reason: "low_confidence"
       });
-      expect(provider.decide).not.toHaveBeenCalled();
+      expect(provider.decide).toHaveBeenCalledOnce();
     } finally {
       store.close();
     }
@@ -159,8 +132,7 @@ describe("provider wire parsing (mock responses only)", () => {
   const question = {
     question: "Country?",
     type: "single_choice" as const,
-    options: ["Canada"],
-    relevantProfileFacts: [{ key: "country", value: "Canada" }]
+    options: ["Canada"]
   };
   it("parses the OpenAI output array and requests strict structured output", async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(

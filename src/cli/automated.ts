@@ -143,28 +143,6 @@ if (command === "done") {
 } else if (command === "notify-test") {
   await (await notifier()).notify({ reason: "test_notification", host: "local-agent" });
   console.log("Test notification sent. Check your phone.");
-} else if (command === "profile-import" && startUrl) {
-  const facts = z
-    .array(
-      z.object({
-        key: z.string().min(1),
-        value: z.string(),
-        kind: z.enum(["stable", "preference", "temporary"]),
-        established: z.boolean()
-      })
-    )
-    .parse(JSON.parse(await readFile(startUrl, "utf8")));
-  const store = new SqliteStore(resolve(config.dataDirectory, "answers.sqlite"));
-  try {
-    for (const fact of facts)
-      if (store.upsertFact(fact) === "conflict") {
-        store.recordReview("contradiction", "Imported profile conflicts with established facts.");
-        throw new Error("Profile conflict; established facts were preserved.");
-      }
-    console.log("Profile facts imported.");
-  } finally {
-    store.close();
-  }
 } else if (!command) {
   console.log(
     "Run corepack pnpm guided for guided setup, login, and automated runs. Advanced commands are documented in docs/advanced.md."
@@ -286,7 +264,7 @@ if (command === "done") {
           store = new SqliteStore(resolve(config.dataDirectory, "answers.sqlite"));
           const provider = new ManualChatGPTProvider(async (prompt) => {
             console.log(
-              `\nReview the following question/facts before sharing them in a normal ChatGPT chat:\n${prompt}\n`
+              `\nReview the following question before sharing them in a normal ChatGPT chat:\n${prompt}\n`
             );
             return terminal.question("Paste the single-line JSON reply (or Enter to stop): ");
           });
