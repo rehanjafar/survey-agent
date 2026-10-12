@@ -161,6 +161,14 @@ async function refresh() {
   );
   if (!$("chatgpt-model").value && state.chatgpt.models.length)
     $("chatgpt-model").value = state.chatgpt.models[0];
+  if (document.activeElement !== $("phone-answer-url"))
+    $("phone-answer-url").value = state.phone?.answerUrl || "";
+  $("phone-answer-test").disabled = !state.phoneAnswers?.ready || !state.phone?.confirmed;
+  $("phone-answer-status").textContent =
+    state.phoneAnswers?.error ||
+    (state.phoneAnswers?.ready
+      ? "Reply service ready — test from your phone with Tailscale connected."
+      : "Save your Tailscale address to enable phone answers.");
   const phone = state.phone;
   $("phone-server").textContent = phone ? new URL(phone.topicUrl).origin : "—";
   $("phone-topic").textContent = phone ? new URL(phone.topicUrl).pathname.slice(1) : "—";
@@ -431,3 +439,9 @@ $("open-regular-chat").addEventListener("click", () => post("chatgpt/browser/ope
 for (const target of ["swagbucks", "chatgpt"]) {
   $("login-" + target).addEventListener("click", () => post("browser/login", { target }));
 }
+
+$("phone-answer-setup").addEventListener("submit", (event) => {
+  event.preventDefault();
+  void post("phone/answers", { url: $("phone-answer-url").value });
+});
+$("phone-answer-test").addEventListener("click", () => post("phone/answers/test"));

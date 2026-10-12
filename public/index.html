@@ -326,6 +326,45 @@
             Focus/Do Not Disturb, and the exact topic.
           </p>
         </article>
+        <article class="card">
+          <h2>Reply from your phone, anywhere</h2>
+          <p>
+            Install Tailscale on your laptop and phone, sign in to the same private network, and
+            keep both connected.
+          </p>
+          <p>
+            On the laptop, run <code>tailscale serve --bg http://127.0.0.1:4318</code>. Follow its
+            HTTPS setup link if prompted. Use Serve, not public Funnel. Only the question reply
+            service belongs on port 4318.
+          </p>
+          <p>
+            On Mac, if the command is missing, use
+            <code
+              >/Applications/Tailscale.app/Contents/MacOS/Tailscale serve --bg
+              http://127.0.0.1:4318</code
+            >.
+          </p>
+          <form id="phone-answer-setup">
+            <label for="phone-answer-url">HTTPS address printed by Tailscale</label>
+            <input
+              id="phone-answer-url"
+              type="url"
+              placeholder="https://laptop.example.ts.net"
+              required
+            />
+            <button type="submit">Save phone reply address</button>
+          </form>
+          <button id="phone-answer-test" class="secondary" disabled>
+            Send a test question to my phone
+          </button>
+          <p id="phone-answer-status">Not configured</p>
+          <p class="hint">
+            Tap the ntfy alert to choose an answer. Four survey choices appear first, with all
+            others one tap away. No answer is preselected. Keep notification links private: each
+            permits one answer to its question. Questions and answers travel through Tailscale, not
+            ntfy.
+          </p>
+        </article>
         <form id="settings-form" class="card settings-form">
           <h2>3. Choose how to run</h2>
           <label for="answer-provider">Answering mode</label
@@ -345,7 +384,7 @@
           </select>
           <label class="check"
             ><input id="autonomous-recovery" type="checkbox" /> Resolve uncertain answers
-            automatically; skip unanswerable surveys and keep going</label
+            automatically; ask my phone when my answer is needed</label
           >
           <label for="start-url">Starting URL</label><input id="start-url" type="url" required />
           <div class="form-grid">
@@ -498,9 +537,9 @@
           <h2>Computer or phone?</h2>
           <p>
             Windows and macOS run the browser engine. This dashboard is responsive, but iOS and
-            Android cannot run this application independently. For phone access, use trusted
-            remote-desktop software to your running computer. This app stays local-only; do not
-            port-forward it.
+            Android cannot run this application independently. To answer questions from your phone,
+            configure Tailscale above. For full browser control, use trusted remote-desktop software
+            to your running computer. This app stays local-only; do not port-forward it.
           </p>
           <h2>First run</h2>
           <ol>

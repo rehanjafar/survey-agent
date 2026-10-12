@@ -32,6 +32,7 @@ import type { RunRecord, SqliteStore } from "../storage/sqlite-store.js";
 
 export interface RunnerState {
   run: RunRecord | null;
+  reviewId: string | null;
   question: NormalizedQuestion | null;
   reason: string | null;
   prompt: string | null;
@@ -48,6 +49,7 @@ export class SurveyRunner {
   private run: RunRecord | null = null;
   private question: NormalizedQuestion | null = null;
   private reason: string | null = null;
+  private reviewId: string | null = null;
   private session: BrowserSession | undefined;
   private driver: BrowserAutomationDriver | undefined;
   private settings: AppSettings | undefined;
@@ -68,6 +70,7 @@ export class SurveyRunner {
   public state(): RunnerState {
     return {
       run: this.run ? { ...this.run } : null,
+      reviewId: this.run?.status === "review" ? this.reviewId : null,
       question: this.question,
       reason: this.reason,
       prompt: this.question ? chatPrompt(providerQuestion(this.question)) : null,
@@ -204,6 +207,22 @@ export class SurveyRunner {
       this.reason = null;
       await this.runContinuously();
     });
+  }
+  public async answerFromPhone(reviewId: string, answer: ProviderDecision): Promise<void> {
+    if (
+      this.run?.status !== "review" ||
+      this.reviewId !== reviewId ||
+      !this.question ||
+      !this.settings ||
+      this.task ||
+      !["low_confidence", "missing_information", "unsupported_question"].includes(this.reason ?? "")
+    )
+      throw new Error(
+        "This question is no longer ready for a phone answer. Open the latest alert."
+      );
+    const result = this.engineFactory(this.settings).human(this.question, answer);
+    if (result.status !== "action") throw new Error(result.detail);
+    await this.resume(answer);
   }
   public async idle(): Promise<void> {
     await this.task;
@@ -722,26 +741,8 @@ export class SurveyRunner {
       await this.waitWhileRunning(60_000);
       return;
     }
-    if (
-      this.recoverAutomatically() &&
-      this.panelOfferActive &&
-      [
-        "low_confidence",
-        "missing_information",
-        "unsupported_question",
-        "no_question_found",
-        "contradiction",
-        "step_limit",
-        "unexpected_page"
-      ].includes(reason)
-    ) {
-      audit(this.store, "survey_skipped", { runId: this.run.id, reason });
-      this.question = null;
-      this.reason = null;
-      await this.returnToOffers(`skipped_${reason}`);
-      return;
-    }
     this.reason = reason;
+    this.reviewId = randomUUID();
     this.status("review", message);
     this.store.recordReview(reason, message);
     let delivered = false;

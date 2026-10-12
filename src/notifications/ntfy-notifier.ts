@@ -1,6 +1,7 @@
 export interface ReviewNotification {
   readonly reason: string;
   readonly host: string;
+  readonly answerUrl?: string;
 }
 export interface ReviewNotifier {
   notify(event: ReviewNotification): Promise<void>;
@@ -34,13 +35,16 @@ export class NtfyNotifier implements ReviewNotifier {
             : "Survey Agent needs attention",
         priority: event.reason === "captcha_detected" ? "urgent" : "high",
         tags: "warning",
+        ...(event.answerUrl ? { click: event.answerUrl } : {}),
         ...(this.token ? { authorization: `Bearer ${this.token}` } : {})
       },
-      // Host and reason only: no survey URL tokens, questions, answers, cookies or screenshots.
+      // No questions or answers in push messages. The optional link is scoped to one review.
       body:
         event.reason === "test_notification"
           ? "Phone alerts are working. Return to Survey Agent and click I received it."
-          : `Paused: ${event.reason} on ${event.host}. Resolve this in the running Chrome window. The agent will recheck before resuming.`
+          : event.answerUrl
+            ? "An answer is needed. Tap this alert to choose your answer on your phone. The laptop will recheck the survey and continue."
+            : `Paused: ${event.reason} on ${event.host}. Resolve this in the running Chrome window. The agent will recheck before resuming.`
     });
     if (!response.ok)
       throw new Error(

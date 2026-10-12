@@ -1,3 +1,5 @@
+import { PhoneAnswerServer } from "./phone-answer-server.js";
+import { phoneAnswerOrigin } from "../notifications/phone-setup.js";
 import { chromeProfile, openChromeLogin } from "../browser/chrome-login.js";
 import { ChatGPTBrowserProvider } from "../providers/chatgpt-browser-provider.js";
 import { ProviderError } from "../providers/provider-error.js";
@@ -84,9 +86,15 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     async (event) => {
       const phone = await readPhoneSetup(dataDirectory);
       if (!phone?.confirmed) return false;
-      await new NtfyNotifier(phone.topicUrl).notify(event);
+      const answerUrl = phoneAnswers.answerLink();
+      await new NtfyNotifier(phone.topicUrl).notify({
+        ...event,
+        ...(answerUrl ? { answerUrl } : {})
+      });
     }
   );
+  const phoneAnswers = new PhoneAnswerServer(runner);
+  let phoneAnswerError = "";
   const token = randomBytes(32).toString("hex");
   let origin = "";
   let mutating = false;
@@ -159,6 +167,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
         regularChat: regularChat.status(),
         chatgpt: { status: authStatus, models, signingIn: Boolean(signingIn), signInUrl },
         phone: (await readPhoneSetup(dataDirectory)) ?? null,
+        phoneAnswers: { ...phoneAnswers.status(), error: phoneAnswerError },
         dataDirectory,
         mockUrl: origin + "/mock/eureka"
       });
@@ -254,6 +263,28 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           await savePhoneSetup(dataDirectory, { ...phone, tested: true });
           break;
         }
+        case "/api/phone/answers": {
+          const { url } = z
+            .object({ url: z.string().max(500) })
+            .strict()
+            .parse(body);
+          const answerUrl = phoneAnswerOrigin(url);
+          const phone = await ensurePhoneSetup(dataDirectory);
+          await phoneAnswers.configure(answerUrl);
+          await savePhoneSetup(dataDirectory, { ...phone, answerUrl });
+          phoneAnswerError = "";
+          break;
+        }
+        case "/api/phone/answers/test": {
+          const phone = await readPhoneSetup(dataDirectory);
+          if (!phone?.confirmed) throw new Error("Confirm your ntfy alerts first.");
+          await new NtfyNotifier(phone.topicUrl).notify({
+            reason: "phone_reply_test",
+            host: "local-agent",
+            answerUrl: phoneAnswers.testLink()
+          });
+          break;
+        }
         case "/api/phone/confirm": {
           z.object({ received: z.literal(true) })
             .strict()
@@ -307,6 +338,15 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
                 "Set up phone alerts, send a test, and click I received it before automatic runs."
               );
           }
+          if (
+            settings.platform === "swagbucks" &&
+            settings.autonomousRecovery &&
+            settings.provider !== "manual" &&
+            !phoneAnswers.status().ready
+          )
+            throw new Error(
+              "Save your Tailscale phone-answer address in Connections & setup before starting. Missing answers will wait for your phone."
+            );
           if (settings.provider === "chatgpt_plan") {
             if (!settings.chatgptModel || !(await plan().models()).includes(settings.chatgptModel))
               throw new Error(
@@ -402,6 +442,15 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("No local server address.");
       origin = "http://127.0.0.1:" + address.port;
+      const phone = await readPhoneSetup(dataDirectory);
+      if (phone?.answerUrl) {
+        try {
+          await phoneAnswers.configure(phone.answerUrl);
+        } catch {
+          phoneAnswerError =
+            "Phone reply service could not start on port 4318. Close any other agent instance, then save the phone address again.";
+        }
+      }
       if (
         settings.provider === "manual" &&
         settings.restartLastRun &&
@@ -413,6 +462,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     async close() {
       await runner.stop();
       await regularChat.close();
+      await phoneAnswers.close();
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
         server.closeIdleConnections();

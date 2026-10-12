@@ -36,3 +36,21 @@ it.each([
 ])("rejects unsafe notification URLs %s", (url) => {
   expect(() => new NtfyNotifier(url)).toThrow();
 });
+it("attaches a one-question phone link without sending personal question text", async () => {
+  const fetchMock = vi.fn(async () => new Response("ok"));
+  vi.stubGlobal("fetch", fetchMock);
+  await new NtfyNotifier("https://ntfy.sh/test-topic").notify({
+    reason: "low_confidence",
+    host: "survey.test",
+    answerUrl: "https://laptop.test.ts.net/#private-question-token"
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    "https://ntfy.sh/test-topic",
+    expect.objectContaining({
+      headers: expect.objectContaining({
+        click: "https://laptop.test.ts.net/#private-question-token"
+      }),
+      body: expect.stringContaining("Tap this alert")
+    })
+  );
+});

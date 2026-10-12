@@ -235,7 +235,7 @@ export class AnswerDecisionEngine {
       return this.review(
         "low_confidence",
         this.bestEffort
-          ? "No supported answer is available; skip this survey."
+          ? "Your answer is needed. The survey will wait while you respond from your phone."
           : "The answer needs your confirmation."
       );
     const remembered = this.store.cachedAnswer(question.fingerprint);

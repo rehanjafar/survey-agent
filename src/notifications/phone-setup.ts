@@ -5,6 +5,7 @@ import { z } from "zod";
 import { NtfyNotifier } from "./ntfy-notifier.js";
 const schema = z.object({
   topicUrl: z.string(),
+  answerUrl: z.string().optional(),
   tested: z.boolean().default(false),
   confirmed: z.boolean().default(false)
 });
@@ -15,6 +16,7 @@ export async function readPhoneSetup(directory: string): Promise<PhoneSetup | un
       JSON.parse(await readFile(join(directory, "notification.json"), "utf8"))
     );
     new NtfyNotifier(setup.topicUrl);
+    if (setup.answerUrl) phoneAnswerOrigin(setup.answerUrl);
     return setup;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -26,6 +28,7 @@ export async function readPhoneSetup(directory: string): Promise<PhoneSetup | un
 }
 export async function savePhoneSetup(directory: string, setup: PhoneSetup): Promise<void> {
   new NtfyNotifier(setup.topicUrl);
+  if (setup.answerUrl) phoneAnswerOrigin(setup.answerUrl);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const path = join(directory, "notification.json");
   await writeFile(path + ".tmp", JSON.stringify(schema.parse(setup)), { mode: 0o600 });
@@ -41,4 +44,23 @@ export async function ensurePhoneSetup(directory: string): Promise<PhoneSetup> {
   };
   await savePhoneSetup(directory, setup);
   return setup;
+}
+
+/** Only a private Tailscale HTTPS origin, never a public tunnel or the admin dashboard. */
+export function phoneAnswerOrigin(value: string): string {
+  const url = new URL(value);
+  if (
+    url.protocol !== "https:" ||
+    !/^[a-z0-9-]+\.[a-z0-9-]+\.ts\.net$/.test(url.hostname) ||
+    url.port ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  )
+    throw new Error(
+      "Enter your laptop's Tailscale HTTPS address, for example https://laptop.example.ts.net"
+    );
+  return url.origin;
 }

@@ -38,6 +38,17 @@ it("walks through phone setup in the dashboard and preserves the topic without s
       reason: "test_notification",
       host: "local-agent"
     });
+    await page.locator("#phone-answer-url").fill("https://laptop.example.ts.net");
+    await page.getByRole("button", { name: "Save phone reply address" }).click();
+    await expect
+      .poll(async () => (await readPhoneSetup(directory))?.answerUrl)
+      .toBe("https://laptop.example.ts.net");
+    await page.locator("#phone-answer-test").click();
+    await expect.poll(() => delivery.mock.calls.length).toBe(2);
+    expect(delivery.mock.calls[1]![0]).toMatchObject({
+      reason: "phone_reply_test",
+      answerUrl: expect.stringMatching(/^https:\/\/laptop.example.ts.net\/#/)
+    });
     await page.locator("#platform").selectOption("swagbucks");
     expect(await page.locator("#start-url").inputValue()).toBe("https://www.swagbucks.com/surveys");
     expect(await page.locator("#minimum-rate-label").textContent()).toContain("SB/hour");
