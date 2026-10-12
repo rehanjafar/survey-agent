@@ -1,6 +1,7 @@
 import type { QuestionType } from "../domain/survey.js";
 export interface ProviderQuestion {
   readonly question: string;
+  readonly language?: string;
   readonly type: QuestionType;
   readonly options: readonly string[];
   readonly rows?: readonly { id: string; label: string; options: readonly string[] }[];

@@ -18,7 +18,7 @@
 
 - Preserve the boundaries between browser automation, extraction, normalization, storage, provider, decision, validation, execution, configuration, and logging.
 - Browser execution accepts structured actions only; LLM reasons never pass to the browser layer.
-- Prefer cached mappings before provider calls. Provider inputs must contain only the active normalized question, relevant options, and matrix rows.
+- Prefer cached mappings before provider calls. Provider inputs must contain only the active normalized question, its optional language hint, relevant options, and matrix rows.
 - Test only against local mock survey applications. Do not add real-survey integration tests.
 
 ## Verification

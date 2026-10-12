@@ -27,6 +27,7 @@ it("loads a delayed embedded question, asks automatically, selects an observed n
   const provider = {
     decide: vi.fn(async (q: ProviderQuestion) => ({
       selectedOption: q.question.includes("Which ONE") ? q.options[0]! : "4",
+      ...(q.question.includes("Which ONE") ? { value: "continue" } : {}),
       confidence: 0.99,
       reason: "Supported by question and options"
     }))

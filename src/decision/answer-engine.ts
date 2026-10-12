@@ -16,6 +16,7 @@ export type DecisionResult =
 export function providerQuestion(question: NormalizedQuestion): ProviderQuestion {
   return {
     question: question.prompt,
+    ...(question.language ? { language: question.language } : {}),
     type: question.type,
     options: question.options.map((option) => option.label),
     ...(question.rows.length
@@ -99,10 +100,8 @@ export class AnswerDecisionEngine {
       (control) =>
         control.kind === "button" &&
         !control.disabled &&
-        /\b(next|continue|proceed|begin|start|launch|ready|survey|study)\b|^[→›»]$/i.test(
-          control.label
-        ) &&
-        !/\b(consent|agree|accept|purchase|buy|pay|delete|withdraw|return|cancel|back|login|sign|account|settings|privacy|terms|help|logout|cash|redeem|submit|finish|complete)\b/i.test(
+        control.label.trim().length > 0 &&
+        !/\b(consent|agree|accept|purchase|buy|pay|delete|withdraw|return|cancel|back|login|sign|account|settings|privacy|terms|help|logout|cash|redeem)\b/i.test(
           control.label
         )
     );
@@ -114,14 +113,19 @@ export class AnswerDecisionEngine {
       const answer = parseDecision(
         await this.provider.decide({
           question:
-            "Which ONE of these visible controls proceeds to the next survey/study page? Choose only an unambiguous continuation or start action. Never choose consent, account changes, payments, completion codes or final submission. If unclear return confidence 0.",
+            "Interpret the control labels in their original language, including mixed languages and right-to-left scripts. Which ONE of these visible controls proceeds to the next survey/study page? Choose only an unambiguous continuation, start or final survey submission action. Set value to exactly continue for continuation/start or submit for final submission. Never choose consent, account changes, payments or completion codes, in any language. If unclear return confidence 0.",
           type: "single_choice",
           options
         })
       );
       const index = options.indexOf(answer.selectedOption ?? "");
-      if (answer.confidence < this.minimumConfidence || index < 0) return undefined;
-      return { selector: candidates[index]!.selector, submit: false };
+      if (
+        answer.confidence < this.minimumConfidence ||
+        index < 0 ||
+        !["continue", "submit"].includes(answer.value ?? "")
+      )
+        return undefined;
+      return { selector: candidates[index]!.selector, submit: answer.value === "submit" };
     } catch (error) {
       if (error instanceof ProviderError && error.reviewReason !== "provider_error") throw error;
       return undefined;

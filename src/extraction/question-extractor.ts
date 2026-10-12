@@ -37,9 +37,10 @@ export function extractQuestions(state: PageState): NormalizedQuestion[] {
         fingerprint: questionFingerprint(
           prompt,
           rows.flatMap((row) => [row.label, ...row.options.map((option) => option.label)]),
-          origin + ":matrix"
+          origin + ":matrix" + (control.language ? `:${control.language}` : "")
         ),
         prompt,
+        ...(control.language ? { language: control.language } : {}),
         type: "matrix",
         rows,
         options: [],
@@ -99,9 +100,10 @@ export function extractQuestions(state: PageState): NormalizedQuestion[] {
       fingerprint: questionFingerprint(
         prompt,
         options.map((option) => option.label),
-        JSON.stringify([origin, type, constraints])
+        JSON.stringify([origin, type, constraints, ...(control.language ? [control.language] : [])])
       ),
       prompt,
+      ...(control.language ? { language: control.language } : {}),
       type,
       options,
       rows: [],
@@ -127,7 +129,7 @@ function questionPrompt(state: PageState, control: InteractiveControl): string {
   const candidates = state.text
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.endsWith("?"));
+    .filter((line) => /[?？؟]$/u.test(line));
   if (candidates.length === 1) return candidates[0]!;
   if (["text", "number", "textarea", "select"].includes(control.kind) && control.label)
     return control.label;

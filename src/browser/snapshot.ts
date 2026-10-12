@@ -127,6 +127,13 @@ export function snapshot(maxText: number): PageState {
       );
       return {
         kind: kind(element),
+        ...(element.closest("[lang]")?.getAttribute("lang") || document.documentElement.lang
+          ? {
+              language: (
+                element.closest("[lang]")?.getAttribute("lang") || document.documentElement.lang
+              ).slice(0, 100)
+            }
+          : {}),
         questionPrompt: question,
         offerText: offer?.innerText.trim().slice(0, 4000) ?? "",
         ...(offer?.getAttribute("data-survey-id") || offer?.getAttribute("data-surveyid")

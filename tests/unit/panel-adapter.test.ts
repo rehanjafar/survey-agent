@@ -230,3 +230,17 @@ describe("Swagbucks SB offers", () => {
     expect(rankPanelOffers([first, { ...first, selector: "#other" }], swagbucks)).toEqual([]);
   });
 });
+
+it.each([
+  ["fr-FR", "1 200 SB 5 minutes"],
+  ["de-DE", "1.200 SB 5 Minuten"],
+  ["ar-EG", "١٬٢٠٠ SB ٥ دقائق"],
+  ["ja-JP", "1200 SB 5分"]
+])("parses localized Swagbucks offers (%s)", (language, text) => {
+  expect(
+    parsePanelOffer(
+      { ...control(text), label: "開始", offerId: "localized", language },
+      { ...options, platform: "swagbucks" }
+    )
+  ).toMatchObject({ reward: 1200, minutes: 5, unit: "SB" });
+});

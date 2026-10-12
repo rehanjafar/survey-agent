@@ -46,3 +46,32 @@ describe("extractCurrentQuestion", () => {
     });
   });
 });
+
+it.each(["ما عاصمة فرنسا؟", "フランスの首都は？", "Quelle est la capitale de la France ?"])(
+  "recognizes localized question punctuation: %s",
+  (prompt) => {
+    const question = extractCurrentQuestion({
+      url: "https://survey.test/",
+      title: "",
+      text: prompt,
+      controls: [
+        {
+          kind: "radio",
+          selector: "#answer",
+          id: "answer",
+          name: "q",
+          label: "Paris",
+          ariaLabel: "",
+          placeholder: "",
+          value: "paris",
+          href: "",
+          checked: false,
+          disabled: false,
+          required: true,
+          options: []
+        }
+      ]
+    });
+    expect(question?.prompt).toBe(prompt);
+  }
+);

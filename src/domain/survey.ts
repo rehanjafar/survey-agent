@@ -14,6 +14,7 @@ export interface MatrixRow {
 export interface NormalizedQuestion {
   readonly fingerprint: string;
   readonly prompt: string;
+  readonly language?: string;
   readonly required: boolean;
   readonly type: QuestionType;
   readonly options: readonly SurveyOption[];

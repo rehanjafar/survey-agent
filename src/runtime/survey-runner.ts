@@ -177,7 +177,8 @@ export class SurveyRunner {
         }
         await this.apply(fresh, result.action, { ...input, confidence: 1 }, "human", remember);
       } else if (wasSubmit && confirmSubmit) {
-        const next = navigation(current);
+        const next =
+          navigation(current) ?? (await this.engineFactory(this.settings!).navigation(current));
         if (!next || !next.submit) {
           await this.review("unexpected_page", "Submit control changed.");
           return;

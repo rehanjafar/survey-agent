@@ -1,3 +1,4 @@
+import { offerNumberText, minuteDurations } from "../../normalization/locale-text.js";
 import type { BrowserSession, InteractiveControl, PageState } from "../../browser/types.js";
 import { isAllowedUrl, NavigationBlockedError } from "../../browser/url-policy.js";
 import { pageStopReason } from "../../validation/page-safety.js";
@@ -28,7 +29,10 @@ export function parsePanelOffer(
   options: PanelOptions
 ): PanelOffer | undefined {
   if (control.kind !== "button" || control.disabled) return undefined;
-  const text = control.offerText || [control.label, control.ariaLabel].filter(Boolean).join(" ");
+  const text = offerNumberText(
+    control.offerText || [control.label, control.ariaLabel].filter(Boolean).join(" "),
+    control.language
+  );
   if (
     /\b(full|no places|0 places|unavailable|completed|invite friends|referral|cash out|bonus|boost|up to|cashback|shop|buy|purchase|game|install|trial|disqualified|expired)\b/i.test(
       text
@@ -50,9 +54,7 @@ export function parsePanelOffer(
     )
   )
     return undefined;
-  const durations = [...text.matchAll(/\b(\d+(?:\.\d+)?)\s*(?:mins?|minutes?)\b/gi)].map((match) =>
-    Number(match[1])
-  );
+  const durations = minuteDurations(text, control.language);
   if (!durations.length || new Set(durations).size !== 1) return undefined;
   const minutes = durations[0]!;
   if (minutes <= 0 || minutes > options.maxDurationMinutes) return undefined;

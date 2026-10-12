@@ -22,6 +22,7 @@ export interface InteractiveControl {
   readonly disabled: boolean;
   readonly required: boolean;
   readonly options: readonly SelectChoice[];
+  readonly language?: string;
   readonly question?: string;
   readonly questionPrompt?: string;
   readonly offerText?: string;

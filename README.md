@@ -280,3 +280,9 @@ controls navigation; it does not grant research permission.
 Developers: `corepack pnpm check` runs formatting, lint, strict TypeScript, build,
 and local mock-browser tests. OAuth/model/ntfy calls are mocked in tests. See
 [AGENTS.md](AGENTS.md) for the repository working agreement.
+
+### Multilingual surveys
+
+Questions and answer labels stay in their original language, including mixed-language and right-to-left pages. The browser captures each question's inherited HTML `lang` hint; ChatGPT infers the language when that hint is missing. All prompt modes request original-language free text, exact option labels, unchanged JSON fields, and standard numeric values. Unknown-language navigation labels go through model classification, with separate continuation and final-submission handling. Existing confidence and submission controls still apply.
+
+Swagbucks offer parsing uses the declared locale for digits, decimal/group separators, and localized minute units. It requires recognizable offer metadata and unambiguous reward/duration values; it never guesses exchange rates. Missing or incorrect locale metadata, unsupported layouts, unclear translations, and localized terminal pages without a completion marker can still require review. Language coverage depends on the connected model; this is not a guarantee that every survey in every language can run unattended. Tests use local mock surveys only.
