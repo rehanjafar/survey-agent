@@ -42,8 +42,8 @@ it("walks through phone setup in the dashboard and preserves the topic without s
     expect(await page.locator("#start-url").inputValue()).toBe("https://www.swagbucks.com/surveys");
     expect(await page.locator("#minimum-rate-label").textContent()).toContain("SB/hour");
     expect(await page.locator("#currency").isDisabled()).toBe(true);
-    await page.locator("#platform").selectOption("prolific");
-    expect(await page.locator("#start-url").inputValue()).toBe("https://app.prolific.com/studies");
+    expect(await page.locator("#platform option").count()).toBe(1);
+    expect(await page.locator("#autonomous-recovery").isChecked()).toBe(true);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();

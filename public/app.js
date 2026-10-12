@@ -98,6 +98,8 @@ function fillSettings(config) {
   $("continuous-surveys").checked = config.continuousSurveys;
   $("offer-poll").value = config.offerPollSeconds;
   $("headless").checked = config.headless;
+  $("browser-choice").value = config.browser;
+  $("autonomous-recovery").checked = config.autonomousRecovery;
   $("restart-run").checked = config.restartLastRun;
 }
 async function refresh() {
@@ -353,6 +355,9 @@ $("settings-form").addEventListener("submit", async (event) => {
     continuousSurveys: $("continuous-surveys").checked,
     offerPollSeconds: Number($("offer-poll").value),
     headless: $("headless").checked,
+    browser: $("browser-choice").value,
+    autonomousRecovery: $("autonomous-recovery").checked,
+    swagbucksSetupVersion: 1,
     restartLastRun: $("restart-run").checked
   });
 });
@@ -422,3 +427,7 @@ $("platform").addEventListener("change", () => {
 });
 
 $("open-regular-chat").addEventListener("click", () => post("chatgpt/browser/open"));
+
+for (const target of ["swagbucks", "chatgpt"]) {
+  $("login-" + target).addEventListener("click", () => post("browser/login", { target }));
+}

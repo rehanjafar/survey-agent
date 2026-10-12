@@ -34,6 +34,9 @@ export const settingsSchema = z
     minimumHourlyReward: z.number().nonnegative().finite().default(0),
     maxDurationMinutes: z.number().positive().finite().default(60),
     headless: z.boolean().default(false),
+    browser: z.enum(["chrome", "chromium"]).default("chromium"),
+    autonomousRecovery: z.boolean().default(false),
+    swagbucksSetupVersion: z.literal(1).optional(),
     autoSubmit: z.boolean().default(false),
     autoAcceptConsent: z.boolean().default(false),
     continuousSurveys: z.boolean().default(false),
@@ -46,3 +49,23 @@ export const settingsSchema = z
   })
   .strict();
 export type AppSettings = z.infer<typeof settingsSchema>;
+
+/** Apply the requested Swagbucks setup once; later explicit settings remain intact. */
+export function swagbucksSettings(previous: unknown = {}): AppSettings {
+  const old = settingsSchema.parse(previous);
+  if (old.swagbucksSetupVersion === 1) return old;
+  return settingsSchema.parse({
+    ...old,
+    swagbucksSetupVersion: 1,
+    platform: "swagbucks",
+    startUrl: old.platform === "swagbucks" ? old.startUrl : "https://www.swagbucks.com/surveys",
+    allowedDomains: [...new Set(["swagbucks.com", "www.swagbucks.com", ...old.allowedDomains])],
+    provider: old.provider === "manual" ? "chatgpt_browser" : old.provider,
+    browser: "chrome",
+    autonomousRecovery: true,
+    continuousSurveys: true,
+    autoSubmit: true,
+    autoAcceptConsent: true,
+    headless: false
+  });
+}

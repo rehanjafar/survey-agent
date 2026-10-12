@@ -1,3 +1,4 @@
+import { BrowserSetupError } from "../browser/types.js";
 import { swagbucksOutcome } from "../platforms/swagbucks/outcome.js";
 import { normalizeText } from "../normalization/question-normalizer.js";
 import { ProviderError } from "../providers/provider-error.js";
@@ -128,7 +129,7 @@ export class SurveyRunner {
           : undefined;
       await this.session.navigate(settings.startUrl);
       if (this.run?.status !== "running") return;
-      await this.loop();
+      await this.runContinuously();
     });
   }
   public pause(): void {
@@ -201,7 +202,7 @@ export class SurveyRunner {
       }
       this.question = null;
       this.reason = null;
-      await this.loop();
+      await this.runContinuously();
     });
   }
   public async idle(): Promise<void> {
@@ -260,12 +261,16 @@ export class SurveyRunner {
     audit(this.store, "provider_approved", { runId: this.run.id });
     this.launchTask(async () => {
       await this.session!.approveNavigation!(hostname);
-      if (this.run?.status === "running") await this.loop();
+      if (this.run?.status === "running") await this.runContinuously();
     });
   }
   private launchTask(work: () => Promise<void>): void {
     this.task = work()
       .catch(async (error: unknown) => {
+        if (this.run?.status === "running" && error instanceof BrowserSetupError) {
+          await this.review("authentication_required", error.message);
+          return;
+        }
         if (this.run?.status === "running" && error instanceof ProviderError) {
           await this.review(error.reviewReason, error.message, error.reviewHost);
           return;
@@ -281,6 +286,28 @@ export class SurveyRunner {
       .finally(() => {
         this.task = undefined;
       });
+  }
+  private async runContinuously(): Promise<void> {
+    while (this.run?.status === "running") {
+      try {
+        await this.loop();
+      } catch (error) {
+        if (this.run?.status !== "running") return;
+        if (error instanceof ProviderError)
+          await this.review(error.reviewReason, error.message, error.reviewHost);
+        else if (this.recoverAutomatically() && this.panelOfferActive)
+          await this.review(
+            "unexpected_page",
+            "Survey operation failed; moving to another survey."
+          );
+        else throw error;
+      }
+    }
+  }
+  private recoverAutomatically(): boolean {
+    return (
+      this.continuous() && this.settings!.autonomousRecovery && this.settings!.provider !== "manual"
+    );
   }
   private async loop(): Promise<void> {
     const settings = this.settings!;
@@ -687,6 +714,33 @@ export class SurveyRunner {
   }
   private async review(reason: ReviewReason, message: string, reviewHost?: string): Promise<void> {
     if (!this.run || this.run.status === "stopped") return;
+    if (this.recoverAutomatically() && reason === "provider_error") {
+      this.question = null;
+      this.reason = null;
+      audit(this.store, "provider_wait", { runId: this.run.id, reason });
+      this.status("running", "ChatGPT is unavailable. Waiting 60 seconds before checking again…");
+      await this.waitWhileRunning(60_000);
+      return;
+    }
+    if (
+      this.recoverAutomatically() &&
+      this.panelOfferActive &&
+      [
+        "low_confidence",
+        "missing_information",
+        "unsupported_question",
+        "no_question_found",
+        "contradiction",
+        "step_limit",
+        "unexpected_page"
+      ].includes(reason)
+    ) {
+      audit(this.store, "survey_skipped", { runId: this.run.id, reason });
+      this.question = null;
+      this.reason = null;
+      await this.returnToOffers(`skipped_${reason}`);
+      return;
+    }
     this.reason = reason;
     this.status("review", message);
     this.store.recordReview(reason, message);

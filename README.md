@@ -1,10 +1,11 @@
 # Survey Agent
 
-A local dashboard for explicitly authorized survey work on **Swagbucks, Prolific, Branded
-Surveys, Eureka, and supported generic survey pages**. It keeps browser logins and
+A local dashboard focused on explicitly authorized **Swagbucks** survey work. It keeps browser logins and
 answer history on your computer, can use your eligible ChatGPT plan for
 supported answers, and sends **ntfy phone alerts** when you need to intervene.
 No paid API fallback, CAPTCHA solving, authentication bypass, or concealment.
+
+The app now defaults to autonomous Swagbucks in installed Google Chrome. Use **Open Chrome for ChatGPT login** and **Open Chrome for Swagbucks login** for normal, manual sign-in; quit those separate Chrome instances, then open ordinary ChatGPT and Start. Low-confidence questions no longer require approval in autonomous mode: supported answers are used, one clarification can be requested, or the survey is skipped. See the guide below for the Google sign-in error and complete steps.
 
 For continuous Swagbucks operation and the current unmerged branch, follow the [exact installation and setup guide](docs/swagbucks-setup.md).
 
@@ -139,7 +140,7 @@ In **Connections & setup**:
    surveys** only if you want supported final Submit/Finish controls to run without
    another confirmation. Click **Save settings**.
 
-Unknown destinations stop for review. The dashboard can explicitly approve a blocked
+In autonomous Swagbucks mode, a survey with an unknown destination is skipped. Outside that mode, unknown destinations stop for review. The dashboard can explicitly approve a blocked
 GET destination for the current run; it never silently trusts a redirect or replays
 a blocked form submission. After stopping, add a recurring authorized provider to
 settings for future runs. Login-only hosts remain separate from answerable hosts.
@@ -151,7 +152,7 @@ alert. Practice mode never sends questions to either ChatGPT integration.
 ### Swagbucks setup
 
 New installations default to **Swagbucks** and `https://www.swagbucks.com/surveys`.
-Existing saved settings are preserved; select Swagbucks in Connections & setup to switch.
+Older defaults upgrade once to the Swagbucks workflow. Later explicitly saved preferences remain intact.
 Use **Displayed reward per minute** to prioritize SB per minute, set a minimum
 **SB/hour** and maximum survey duration, then save settings. For example, 80 SB in
 5 minutes is 960 SB/hour advertised. This is a ranking estimate, not credited income.
@@ -185,8 +186,7 @@ rather than a system-role input, following the
 1. Optionally use **Try local practice** first. It uses local mock pages and manual mode.
 2. Click **Start**. Complete login or verification in the survey browser, then **Resume**.
 3. New questions go to your selected ChatGPT connection without a local personal-facts
-   prerequisite. Confirmed answer mappings can still be reused. Low confidence or
-   unavailable context can require your input. Stop the run before changing settings.
+   prerequisite. Confirmed answer mappings can still be reused. Autonomous mode resolves supported uncertainty or skips a survey with unavailable personal context; it does not request low-confidence approval. Stop the run before changing settings.
 
 Enable **Keep doing Swagbucks surveys** to return to the list and continue automatically after each recognized terminal outcome. Enable **Automatically submit completed surveys** and **Automatically accept privacy policies, cookies, and survey participation consent on my behalf** for those authorized actions. Otherwise, the dashboard finishes at detected survey completion; click Start for another run.
 Discovery also works in Generic mode: start at an authorized platform homepage and

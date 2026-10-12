@@ -77,3 +77,48 @@ it("sends through a mock ordinary chat, waits for completion, and refuses to ove
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it("reads a delayed pending reply without sending it twice and handles a malformed completed reply", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "chat-pending-"));
+  const browser = await chromium.launch();
+  const context = await browser.newContext();
+  await context.route("**/*", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: `<textarea id="prompt-textarea"></textarea><button data-testid="send-button" aria-label="إرسال" onclick="send()">إرسال</button><script>
+  let sends=0;
+  function send(){const input=document.querySelector('textarea');const payload=JSON.parse(input.value.trim().split('\\n').at(-1));input.value='';document.body.dataset.sends=String(++sends);setTimeout(()=>{const message=document.createElement('div');message.setAttribute('data-message-author-role','assistant');message.setAttribute('data-message-complete','');const content=document.createElement('div');content.className='markdown';content.textContent=sends===1?JSON.stringify({requestId:payload.requestId,answer:{selectedOption:'4',basis:'objective',confidence:.6,reason:''}}):'not valid JSON';message.append(content);document.body.append(message);},sends===1?1300:10);}
+  </script>`
+    })
+  );
+  const provider = new ChatGPTBrowserProvider(
+    directory,
+    async () => context,
+    () => "chromium",
+    600
+  );
+  const question = {
+    question: "What is two plus two?",
+    type: "single_choice" as const,
+    options: ["4", "5"]
+  };
+  try {
+    await provider.open();
+    await expect(provider.decide(question)).rejects.toThrow("existing reply");
+    const page = context.pages()[0]!;
+    await page.waitForTimeout(700);
+    expect(await provider.decide(question)).toMatchObject({
+      selectedOption: "4",
+      basis: "objective"
+    });
+    expect(await page.locator("body").getAttribute("data-sends")).toBe("1");
+    expect(
+      await provider.decide({ ...question, resolution: "best_supported_answer" })
+    ).toMatchObject({ confidence: 0 });
+    expect(await page.locator("body").getAttribute("data-sends")).toBe("2");
+  } finally {
+    await provider.close();
+    await browser.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

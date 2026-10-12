@@ -279,10 +279,17 @@
           >
         </article>
         <article class="card">
-          <h2>Ordinary ChatGPT fallback</h2>
+          <h2>Ordinary ChatGPT connection</h2>
           <p>
             A normal chat can use its available context before the agent alerts you. Its browser
             session is separate from your survey login and ChatGPT plan connection.
+          </p>
+          <button id="login-chatgpt" class="secondary">Open Chrome for ChatGPT login</button>
+          <button id="login-swagbucks" class="secondary">Open Chrome for Swagbucks login</button>
+          <p class="hint">
+            If Google says the browser may not be secure, use these normal Chrome windows to sign in
+            yourself. Quit those separate Chrome instances when finished, then open ordinary ChatGPT
+            or Start. These use the agent's separate profiles, not your normal Chrome profile.
           </p>
           <button id="open-regular-chat">Open ordinary ChatGPT</button>
           <p id="regular-chat-status">Not opened</p>
@@ -331,16 +338,21 @@
             id="chatgpt-models"
           ></datalist>
           <h2>Survey browser</h2>
+          <label for="browser-choice">Browser</label
+          ><select id="browser-choice">
+            <option value="chrome">Installed Google Chrome</option>
+            <option value="chromium">Bundled Chromium (local testing)</option>
+          </select>
+          <label class="check"
+            ><input id="autonomous-recovery" type="checkbox" /> Resolve uncertain answers
+            automatically; skip unanswerable surveys and keep going</label
+          >
           <label for="start-url">Starting URL</label><input id="start-url" type="url" required />
           <div class="form-grid">
             <div>
-              <label for="platform">Website adapter</label
+              <label for="platform">Survey platform</label
               ><select id="platform">
                 <option value="swagbucks">Swagbucks</option>
-                <option value="eureka">Eureka Surveys</option>
-                <option value="prolific">Prolific</option>
-                <option value="branded">Branded Surveys</option>
-                <option value="generic">Generic survey</option>
               </select>
             </div>
             <div>
@@ -495,7 +507,7 @@
             <li>
               Use Try local practice to learn the review flow without opening an external survey.
             </li>
-            <li>Choose your platform and authorized domains under Connections & setup.</li>
+            <li>Confirm Swagbucks and authorized domains under Connections & setup.</li>
             <li>Start a survey. Sign in manually in the browser if prompted, then Resume.</li>
             <li>
               When a question needs your input, answer in the review panel or use the ChatGPT

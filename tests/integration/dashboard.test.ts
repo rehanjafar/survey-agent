@@ -46,7 +46,13 @@ describe("local dashboard and autonomous survey loop", () => {
     expect((await api("settings", { ...state.body.settings, provider: "openai" })).status).toBe(
       400
     );
-    expect(state.body.noCost).toBe(true);
+    expect(state.body.settings).toMatchObject({
+      platform: "swagbucks",
+      provider: "chatgpt_browser",
+      browser: "chrome",
+      autonomousRecovery: true
+    });
+    expect(state.body.noCost).toBe(false);
   });
   it("has no personal-facts API or state", async () => {
     const state = (await api("state")).body;
@@ -182,9 +188,12 @@ describe("local dashboard and autonomous survey loop", () => {
       startUrl: origin + "/mock/" + route,
       allowedDomains: ["127.0.0.1"],
       headless: true,
-      platform: "generic"
+      platform: "generic",
+      provider: "manual",
+      browser: "chromium",
+      autonomousRecovery: false
     });
-    await api("start", {});
+    expect((await api("start", {})).status).toBe(200);
     await idle();
     expect(app.runner.state()).toMatchObject({ run: { status: "review" }, reason });
   });

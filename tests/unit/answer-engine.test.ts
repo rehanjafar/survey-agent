@@ -165,3 +165,89 @@ describe("AnswerDecisionEngine", () => {
     database.close();
   });
 });
+
+it.each(["objective", "abstention"] as const)(
+  "uses a validated %s response without confidence approval in autonomous mode",
+  async (basis) => {
+    const database = new SqliteStore(":memory:");
+    try {
+      const selectedOption = basis === "abstention" ? "Prefer not to answer" : "Blue";
+      const activeQuestion =
+        basis === "abstention"
+          ? {
+              ...question,
+              options: [{ id: "decline", label: selectedOption, selector: "#decline" }]
+            }
+          : { ...question, prompt: "Which color is the clear daytime sky?" };
+      const provider = {
+        decide: vi.fn(async () => ({
+          selectedOption,
+          basis,
+          confidence: 0.2,
+          reason: "Supported response"
+        }))
+      };
+      const result = await new AnswerDecisionEngine(
+        database,
+        provider,
+        0.9,
+        undefined,
+        true
+      ).decide(activeQuestion);
+      expect(result).toMatchObject({ status: "action", answer: { confidence: 0.2, basis } });
+      expect(provider.decide).toHaveBeenCalledOnce();
+    } finally {
+      database.close();
+    }
+  }
+);
+it("re-examines a completed uncertain answer once, without raising its confidence artificially", async () => {
+  const database = new SqliteStore(":memory:");
+  try {
+    const provider = {
+      decide: vi
+        .fn()
+        .mockResolvedValueOnce({ confidence: 0, reason: "uncertain" })
+        .mockResolvedValueOnce({
+          selectedOption: "Blue",
+          basis: "objective",
+          confidence: 0.4,
+          reason: "Best supported choice"
+        })
+    };
+    expect(
+      await new AnswerDecisionEngine(database, provider, 0.9, undefined, true).decide({
+        ...question,
+        prompt: "Which color is the clear daytime sky?"
+      })
+    ).toMatchObject({ status: "action", answer: { confidence: 0.4 } });
+    expect(provider.decide).toHaveBeenLastCalledWith(
+      expect.objectContaining({ resolution: "best_supported_answer", options: ["Red", "Blue"] })
+    );
+  } finally {
+    database.close();
+  }
+});
+it("does not manufacture a missing personal answer or accept an invented option", async () => {
+  const database = new SqliteStore(":memory:");
+  try {
+    for (const answer of [
+      { confidence: 0, reason: "Personal information unavailable" },
+      { selectedOption: "Purple", basis: "objective", confidence: 0.3, reason: "Invalid label" }
+    ]) {
+      const provider = { decide: vi.fn(async () => answer) };
+      expect(
+        await new AnswerDecisionEngine(
+          database,
+          provider as LlmProvider,
+          0.9,
+          undefined,
+          true
+        ).decide(question)
+      ).toMatchObject({ status: "review" });
+      expect(provider.decide).toHaveBeenCalledTimes(2);
+    }
+  } finally {
+    database.close();
+  }
+});

@@ -6,6 +6,7 @@ const responseSchema = z
   .object({
     selectedOption: z.string().optional(),
     value: z.string().optional(),
+    basis: z.enum(["objective", "personal_context", "abstention"]).optional(),
     confidence: z.number().finite().min(0).max(1),
     reason: z.string().max(500)
   })

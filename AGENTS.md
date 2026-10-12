@@ -4,7 +4,7 @@
 
 - Automate only survey environments the operator owns or is explicitly authorized to test.
 - Enforce configured domain allowlists. Never implement CAPTCHA solving, authentication bypasses, or anti-bot evasion.
-- Stop for human review on CAPTCHA, authentication failures, unexpected pages, ambiguous controls, unsupported question types, or low confidence.
+- Stop for CAPTCHA and authentication failures. In autonomous Swagbucks mode, resolve supported uncertain answers or skip unanswerable/unsupported surveys without human approval; never invent personal information. Keep unapproved destinations blocked.
 - Send personal questions to the configured provider without a local personal-facts prerequisite.
 
 ## Data handling
