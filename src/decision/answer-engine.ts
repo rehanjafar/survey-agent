@@ -192,16 +192,6 @@ export class AnswerDecisionEngine {
     const answer = parseDecision(input) as ProviderDecision;
     if (answer.confidence < this.minimumConfidence)
       return this.review("low_confidence", "The answer needs your confirmation.");
-    const fact = question.factKey
-      ? this.store
-          .facts()
-          .find(
-            (item) => item.key === question.factKey && item.established && item.kind !== "temporary"
-          )
-      : undefined;
-    const value = answer.value ?? answer.selectedOption;
-    if (fact && value !== undefined && !optionRepresentsFact(fact.value, value))
-      return this.review("contradiction", "The answer conflicts with an established profile fact.");
     const remembered = this.store.cachedAnswer(question.fingerprint);
     if (remembered && source === "human") {
       try {

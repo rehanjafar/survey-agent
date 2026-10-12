@@ -109,7 +109,7 @@ describe("validation and no-cost guarantees", () => {
       validateAnswer(base, { selectedOption: "Canada", value: "Canada", confidence: 1, reason: "" })
     ).toThrow();
   });
-  it("uses profile facts before the model and rejects conflicts before browser execution", async () => {
+  it("uses profile facts before the model and accepts a different manual answer", async () => {
     const store = new SqliteStore(":memory:");
     try {
       store.upsertFact({ key: "country", value: "Canada", kind: "stable", established: true });
@@ -125,7 +125,8 @@ describe("validation and no-cost guarantees", () => {
           { ...base, factKey: "country" },
           { selectedOption: "United States", confidence: 1, reason: "" }
         )
-      ).toMatchObject({ status: "review", reason: "contradiction" });
+      ).toMatchObject({ status: "action", source: "human", action: { selector: "#us" } });
+      expect(store.facts()[0]?.value).toBe("Canada");
       expect(store.stats().mappings).toBe(0);
       store.correctFact(
         { key: "country", value: "United States", kind: "stable", established: true },

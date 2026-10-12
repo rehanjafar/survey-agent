@@ -173,13 +173,15 @@ platform URLs. Ambiguous hubs or unrecognized designs still stop; arbitrary webs
 are not guaranteed. Known Prolific/Branded reward and duration filters remain active.
 
 Confirmed numeric facts can match response ranges: age 30 can select “25–34” without
-changing your age. Unresolvable or conflicting facts still need your input.
+changing your age. Missing personal information still needs your input.
 The current survey also keeps a separate short-term answer history. Repeated
 normalized questions reuse their earlier validated answer, and a conflicting manual
 answer to that same question is stopped. This history resets when you start a new
 run; it does not become a personal fact. This deterministic check covers repeated
 questions, not every possible contradiction between differently worded questions.
-Checks against confirmed personal facts remain in place.
+Answer validation does not pause solely because an answer differs from a saved
+personal fact. Profile facts still provide automatic answers when they match, and
+changing an established fact in the saved profile requires explicit correction.
 
 Complex study instructions, consent, platform completion-code forms, unsupported
 widgets, ambiguous controls, and missing facts can require manual review. Never

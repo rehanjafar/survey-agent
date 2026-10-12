@@ -4,7 +4,8 @@
 
 - Automate only survey environments the operator owns or is explicitly authorized to test.
 - Enforce configured domain allowlists. Never implement CAPTCHA solving, authentication bypasses, or anti-bot evasion.
-- Stop for human review on CAPTCHA, authentication failures, unexpected pages, ambiguous controls, unsupported question types, low confidence, or profile conflicts.
+- Stop for human review on CAPTCHA, authentication failures, unexpected pages, ambiguous controls, unsupported question types, or low confidence.
+- Do not block answer execution solely because an answer differs from a saved profile fact. Profile edits still require explicit correction of established facts.
 
 ## Data handling
 

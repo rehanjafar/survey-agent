@@ -181,9 +181,48 @@ describe("AnswerDecisionEngine", () => {
         confidence: 1,
         reason: ""
       })
-    ).toMatchObject({ status: "review", reason: "contradiction" });
+    ).toMatchObject({ status: "action", source: "human", action: { selector: "#young" } });
     database.close();
   });
+  it.each(["cache", "llm", "human", "survey_memory"] as const)(
+    "accepts a valid %s answer that differs from a saved personal fact",
+    async (source) => {
+      const database = store();
+      try {
+        database.upsertFact({
+          key: "preferred_color",
+          value: "Green",
+          kind: "preference",
+          established: true
+        });
+        const q = { ...question, factKey: "preferred_color" };
+        const answer = { selectedOption: "Blue", confidence: 1, reason: "" };
+        const provider = { decide: vi.fn(async () => answer) };
+        const engine = new AnswerDecisionEngine(database, provider);
+        if (source === "cache")
+          database.saveAnswer({
+            fingerprint: q.fingerprint,
+            answer: JSON.stringify(answer),
+            confidence: 1
+          });
+        const result =
+          source === "human"
+            ? engine.human(q, answer)
+            : source === "survey_memory"
+              ? engine.replay(q, answer)
+              : await engine.decide(q);
+        expect(result).toMatchObject({
+          status: "action",
+          source,
+          action: { selector: "#blue" }
+        });
+        expect(database.reviews()).toHaveLength(0);
+        expect(database.facts()[0]?.value).toBe("Green");
+      } finally {
+        database.close();
+      }
+    }
+  );
   it("does not cache an unrecognized or unsupported answer", async () => {
     const database = store();
     const primary: LlmProvider = {
