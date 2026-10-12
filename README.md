@@ -6,6 +6,8 @@ answer history on your computer, can use your eligible ChatGPT plan for
 supported answers, and sends **ntfy phone alerts** when you need to intervene.
 No paid API fallback, CAPTCHA solving, authentication bypass, or concealment.
 
+For continuous Swagbucks operation and the current unmerged branch, follow the [exact installation and setup guide](docs/swagbucks-setup.md).
+
 ## 1. Download and launch the latest version
 
 Use the updated **main** branch after the merge. An older downloaded ZIP will not
@@ -77,9 +79,7 @@ and Focus/Do Not Disturb. Open the topic in ntfy to see whether a message arrive
 On Android, ntfy's instant-delivery option can help with delayed background alerts.
 Do not confirm delivery until an actual notification reaches your phone.
 
-An alert does **not** solve a CAPTCHA remotely. Open the survey browser on your
-computer, complete the CAPTCHA or login yourself, then click **Resume** in the
-dashboard. Failed delivery leaves the run stopped for local review.
+An alert does **not** solve a CAPTCHA remotely. In continuous Swagbucks mode, solve a survey CAPTCHA in the survey browser; the agent rechecks and resumes automatically. Login and ChatGPT-window verification still require **Resume** after resolution. Failed delivery leaves the run stopped for local review.
 
 ## 3. Connect ChatGPT and choose your platform
 
@@ -161,8 +161,7 @@ rows, supports comma-separated SB rewards, ignores displayed hourly rates when
 reading total reward, and excludes ambiguous rewards and shopping/game offers.
 A stable survey ID prevents repeating an attempted card within a run even if its
 link changes. Returning to the offer list resets the prior survey's answer memory.
-No eligible offers, explicit screen-outs, or full surveys stop with a specific
-message instead of guessing a destination. Supported provider redirects, popup
+In continuous mode, completion, explicit screen-outs, and full surveys return to the list; no eligible offers cause a timed wait and refresh. Outside continuous mode, these outcomes stop with a specific message. Unfamiliar visible SB cards can be interpreted through ChatGPT, with observed-number checks and the same eligibility filters. Supported provider redirects, popup
 windows, and nested question frames use the existing browser flow.
 
 Check credited rewards in Swagbucks Activity. The application does not equate a
@@ -189,7 +188,7 @@ rather than a system-role input, following the
    prerequisite. Confirmed answer mappings can still be reused. Low confidence or
    unavailable context can require your input. Stop the run before changing settings.
 
-The dashboard finishes at detected survey completion; click Start for another run.
+Enable **Keep doing Swagbucks surveys** to return to the list and continue automatically after each recognized terminal outcome. Enable **Automatically submit completed surveys** and **Automatically accept privacy policies, cookies, and survey participation consent on my behalf** for those authorized actions. Otherwise, the dashboard finishes at detected survey completion; click Start for another run.
 Discovery also works in Generic mode: start at an authorized platform homepage and
 the agent can follow visible survey/study hubs, compare offer cards in the same
 reward unit, and open start/detail links. It uses observed links rather than fixed
@@ -201,7 +200,7 @@ normalized questions reuse their earlier validated answer, and a conflicting man
 answer to that same question is stopped. This history resets when you start a new
 run. This deterministic check covers repeated
 questions, not every possible contradiction between differently worded questions.
-Complex study instructions, consent, platform completion-code forms, unsupported
+Complex study instructions, ambiguous consent, platform completion-code forms, unsupported
 widgets, ambiguous controls, and unavailable context can require manual review. Never
 invent a completion code. Keep the computer awake and online during runs.
 
@@ -229,7 +228,7 @@ agent. Closed shadow roots, canvas/image-only questions, custom sliders/drag-and
 complex consent flows and unknown providers can still need review. New-window GETs
 are moved into the managed survey tab; flows requiring a live opener window or a
 new-window POST still need manual handling. The dashboard stops after one detected
-survey completion. No real-survey integration tests are run; browser tests use local
+survey completion unless continuous Swagbucks mode is enabled. No real-survey integration tests are run; browser tests use local
 fixtures. The **Test ChatGPT** button verifies your own connection separately.
 
 ## Updating and finding your data

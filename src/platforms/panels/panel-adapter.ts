@@ -133,6 +133,9 @@ export class PanelSurveyAdapter {
   ) {
     this.allowed = new Set(options.allowedHosts);
   }
+  public wasAttempted(key: string): boolean {
+    return this.attempted.has(key);
+  }
   public markAttempted(key: string): void {
     this.attempted.add(key);
   }

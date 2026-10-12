@@ -94,6 +94,9 @@ function fillSettings(config) {
   $("max-steps").value = config.maxSteps;
   $("step-delay").value = config.stepDelayMs;
   $("auto-submit").checked = config.autoSubmit;
+  $("auto-consent").checked = config.autoAcceptConsent;
+  $("continuous-surveys").checked = config.continuousSurveys;
+  $("offer-poll").value = config.offerPollSeconds;
   $("headless").checked = config.headless;
   $("restart-run").checked = config.restartLastRun;
 }
@@ -346,6 +349,9 @@ $("settings-form").addEventListener("submit", async (event) => {
     maxSteps: Number($("max-steps").value),
     stepDelayMs: Number($("step-delay").value),
     autoSubmit: $("auto-submit").checked,
+    autoAcceptConsent: $("auto-consent").checked,
+    continuousSurveys: $("continuous-surveys").checked,
+    offerPollSeconds: Number($("offer-poll").value),
     headless: $("headless").checked,
     restartLastRun: $("restart-run").checked
   });

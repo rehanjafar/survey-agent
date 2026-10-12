@@ -131,3 +131,32 @@ it.each(["submit", undefined, "consent"])(
     }
   }
 );
+
+it.each(["survey_completed", "survey_screened_out", "survey_unavailable", "unknown"])(
+  "classifies terminal pages without assuming payment (%s)",
+  async (selectedOption) => {
+    const store = new SqliteStore(":memory:");
+    try {
+      const provider = {
+        decide: vi.fn(async () => ({ selectedOption, confidence: 1, reason: "" }))
+      };
+      const engine = new AnswerDecisionEngine(store, provider);
+      expect(
+        await engine.terminalOutcome({
+          ...page,
+          text: "このアンケートは終了しました",
+          controls: []
+        })
+      ).toBe(selectedOption === "unknown" ? undefined : selectedOption);
+      expect(
+        await engine.terminalOutcome({
+          ...page,
+          controls: [{ ...button("", "#answer"), kind: "text" }]
+        })
+      ).toBeUndefined();
+      expect(provider.decide).toHaveBeenCalledTimes(1);
+    } finally {
+      store.close();
+    }
+  }
+);
