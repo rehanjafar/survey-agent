@@ -323,6 +323,11 @@
           </p>
           <button id="connect-chatgpt">Connect ChatGPT</button
           ><button id="refresh-models" class="secondary">Refresh available models</button>
+          <button id="test-chatgpt" class="secondary">Test ChatGPT</button>
+          <p class="hint">
+            After selecting a model below, test one small automatic request using your ChatGPT
+            allowance.
+          </p>
           <p id="chatgpt-status">Not connected</p>
           <a id="chatgpt-signin" hidden target="_blank" rel="noreferrer"
             >Open the ChatGPT sign-in page</a
@@ -412,6 +417,14 @@
               ><input id="max-duration" type="number" min="1" />
             </div>
           </div>
+          <label
+            ><input id="survey-host-catalog" type="checkbox" /> Allow the built-in survey-provider
+            catalog (Qualtrics, Cint, Dynata, Gorilla and other supported hosts)</label
+          >
+          <p class="hint">
+            Applies to Eureka, Prolific and Branded. Unknown hosts still pause for review. Disable
+            this to use only your own domain list.
+          </p>
           <label for="navigation-mode">Browser compatibility</label>
           <select id="navigation-mode">
             <option value="compatible">

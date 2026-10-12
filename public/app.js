@@ -88,6 +88,7 @@ function fillSettings(config) {
   $("platform").value = config.platform;
   $("ranking").value = config.rankBy;
   $("domains").value = config.allowedDomains.join("\n");
+  $("survey-host-catalog").checked = config.surveyHostCatalog;
   $("navigation-mode").value = config.navigationMode;
   $("max-steps").value = config.maxSteps;
   $("step-delay").value = config.stepDelayMs;
@@ -390,6 +391,7 @@ $("settings-form").addEventListener("submit", async (event) => {
     startUrl: $("start-url").value,
     platform: $("platform").value,
     navigationMode: $("navigation-mode").value,
+    surveyHostCatalog: $("survey-host-catalog").checked,
     rankBy: $("ranking").value,
     allowedDomains: $("domains")
       .value.split(/[\s,]+/)
@@ -423,6 +425,9 @@ if (window.location.protocol === "file:") {
 } else void poll();
 
 $("connect-chatgpt").addEventListener("click", () => post("chatgpt/login"));
+$("test-chatgpt").addEventListener("click", () =>
+  post("chatgpt/test", { model: $("chatgpt-model").value.trim() })
+);
 $("refresh-models").addEventListener("click", () => post("chatgpt/models"));
 $("phone-setup").addEventListener("click", () => post("phone/setup"));
 $("phone-test").addEventListener("click", () => post("phone/test"));

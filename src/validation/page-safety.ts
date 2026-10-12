@@ -15,9 +15,16 @@ export function pageStopReason(
   if (
     state.hasAuthentication ||
     state.controls.some((control) => control.inputType === "password") ||
-    /\b(log[ -]?in|sign[ -]?in|verification code|two-factor|session expired)\b/i.test(
-      `${state.title}\n${state.text}`
-    )
+    /^(?:log[ -]?in|sign[ -]?in)(?:\s|$)/i.test(state.title.trim()) ||
+    /^(?:log[ -]?in|sign[ -]?in)$/i.test(state.text.trim()) ||
+    /\b((?:log[ -]?in|sign[ -]?in) (?:to continue|with your|to your)|verification code|two-factor|session expired)\b/i.test(
+      state.text
+    ) ||
+    (state.controls.some((control) => ["email", "password"].includes(control.inputType ?? "")) &&
+      state.controls.some(
+        (control) =>
+          control.kind === "button" && /^(?:log[ -]?in|sign[ -]?in)$/i.test(control.label.trim())
+      ))
   )
     return "authentication_required";
   return undefined;

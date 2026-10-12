@@ -1,3 +1,4 @@
+import { effectiveSurveyDomains } from "../config/survey-hosts.js";
 import type { ReviewNotification } from "../notifications/ntfy-notifier.js";
 import { PanelSurveyAdapter } from "../platforms/panels/panel-adapter.js";
 import { pageStopReason } from "../validation/page-safety.js";
@@ -39,6 +40,7 @@ export class SurveyRunner {
   private answered = new Set<string>();
   private lastNavigation: string | undefined;
   private lastPageUrl: string | undefined;
+  private readWaitStarted: number | undefined;
   public constructor(
     private readonly store: SqliteStore,
     private readonly makeDriver: (settings: AppSettings) => BrowserAutomationDriver,
@@ -57,6 +59,7 @@ export class SurveyRunner {
     };
   }
   public async start(settings: AppSettings): Promise<void> {
+    settings = { ...settings, allowedDomains: effectiveSurveyDomains(settings) };
     if (this.task || (this.run && ["running", "paused", "review"].includes(this.run.status)))
       throw new Error("Stop the current run first.");
     if (
@@ -72,6 +75,7 @@ export class SurveyRunner {
     this.answered.clear();
     this.lastNavigation = undefined;
     this.lastPageUrl = undefined;
+    this.readWaitStarted = undefined;
     this.question = null;
     this.reason = null;
     this.run = {
@@ -281,6 +285,7 @@ export class SurveyRunner {
       try {
         questions = extractQuestions(page);
       } catch {
+        if (await this.waitForPage()) continue;
         await this.review(
           "unsupported_question",
           "The page has ambiguous or unsupported question controls."
@@ -316,7 +321,8 @@ export class SurveyRunner {
         continue;
       }
       this.question = null;
-      const next = navigation(page);
+      const next = navigation(page) ?? (await engine.navigation(page));
+      if (this.run.status !== "running") return;
       if (next) {
         if (next.submit && !settings.autoSubmit) {
           await this.review(
@@ -350,12 +356,20 @@ export class SurveyRunner {
           continue;
         }
       }
+      if (await this.waitForPage()) continue;
       await this.review(
         "no_question_found",
         "No supported question, continuation button or survey offer was found."
       );
       return;
     }
+  }
+  private async waitForPage(): Promise<boolean> {
+    this.readWaitStarted ??= Date.now();
+    if (Date.now() - this.readWaitStarted >= 4000) return false;
+    this.status("running", "Waiting for the page's survey controls to finish loading…");
+    await delay(400);
+    return true;
   }
   private async guard(page: PageState): Promise<boolean> {
     let reason: ReviewReason | undefined;
@@ -370,10 +384,12 @@ export class SurveyRunner {
     else if (pageStopReason(page) === "captcha_detected") reason = "captcha_detected";
     else if (
       pageStopReason(page) === "authentication_required" ||
-      isAllowedUrl(
-        page.url,
-        new Set(this.settings!.authDomains),
-        this.settings!.navigationMode === "compatible"
+      (page.documentUrls ?? [page.url]).some((url) =>
+        isAllowedUrl(
+          url,
+          new Set(this.settings!.authDomains),
+          this.settings!.navigationMode === "compatible"
+        )
       ) ||
       !isAllowedUrl(
         page.url,
@@ -404,6 +420,7 @@ export class SurveyRunner {
   ): Promise<void> {
     if (this.run?.status !== "running") return;
     await executeAction(this.session!, action);
+    this.readWaitStarted = undefined;
     this.answered.add(binding(question));
     if (answer) {
       if (remember) this.engineFactory(this.settings!).remember(question, answer);
@@ -432,6 +449,21 @@ export class SurveyRunner {
       );
       return;
     }
+    const fresh = await this.session!.capturePageState();
+    if (await this.guard(fresh)) return;
+    if (
+      pageSignature(fresh) !== before ||
+      !fresh.controls.some(
+        (control) => control.selector === selector && control.kind === "button" && !control.disabled
+      )
+    ) {
+      await this.review(
+        "unexpected_page",
+        "Page changed before navigation. Inspect it before resuming."
+      );
+      return;
+    }
+    this.readWaitStarted = undefined;
     this.lastNavigation = before;
     await executeAction(this.session!, { kind: "continue", selector });
     this.run.steps++;
@@ -534,9 +566,11 @@ function navigation(page: PageState): { selector: string; submit: boolean } | un
     (control) =>
       control.kind === "button" &&
       !control.disabled &&
-      /^(next|continue|submit|finish|complete survey)(\s*[→›»])?$/i.test(control.label.trim())
+      /^(next(?: page| question)?|continue(?: to (?:survey|study|next page))?|save (?:and|&) continue|begin(?: survey| study)?|start(?: survey| study| now)?|proceed|submit(?: answers| survey)?|finish|complete survey)(\s*[→›»])?$/i.test(
+        control.label.trim()
+      )
   );
-  if (controls.length > 1) throw new Error("Ambiguous navigation controls.");
+  if (controls.length > 1) return undefined;
   const control = controls[0];
   return control
     ? {

@@ -1,6 +1,20 @@
 import { chromium } from "playwright";
-import type { Browser, BrowserContext, Page, Route, CDPSession, Frame } from "playwright";
-import { isAllowedUrl, isAllowedDocument, NavigationBlockedError } from "./url-policy.js";
+import type {
+  Browser,
+  BrowserContext,
+  Page,
+  Route,
+  CDPSession,
+  Frame,
+  FrameLocator,
+  Locator
+} from "playwright";
+import {
+  isAllowedUrl,
+  isAllowedDocument,
+  isVerificationFrame,
+  NavigationBlockedError
+} from "./url-policy.js";
 import { snapshot } from "./snapshot.js";
 import type {
   BrowserAutomationDriver,
@@ -265,7 +279,7 @@ class PlaywrightBrowserSession implements BrowserSession {
     this.check();
     for (let attempt = 0; ; attempt++) {
       try {
-        const state = await this.page.evaluate(snapshot, this.maxText);
+        const state = await this.captureFrame(this.page.mainFrame(), []);
         this.check();
         return state;
       } catch (error) {
@@ -283,37 +297,110 @@ class PlaywrightBrowserSession implements BrowserSession {
       }
     }
   }
+  private locator(selector: string): Locator {
+    if (!selector.startsWith("survey-frame:")) return this.page.locator(selector);
+    const [frames, target] = JSON.parse(selector.slice("survey-frame:".length)) as [
+      string[],
+      string
+    ];
+    let scope: Page | FrameLocator = this.page;
+    for (const frame of frames) scope = scope.frameLocator(frame);
+    return scope.locator(target);
+  }
+  private async captureFrame(frame: Frame, path: string[]): Promise<PageState> {
+    if (path.length > 8) throw new Error("Survey frame nesting exceeds the supported limit.");
+    const own = await frame.evaluate(snapshot, this.maxText);
+    const qualify = (selector: string) =>
+      path.length && selector ? "survey-frame:" + JSON.stringify([path, selector]) : selector;
+    const controls = own.controls.map((control) => ({
+      ...control,
+      selector: qualify(control.selector),
+      ...(control.group || path.length ? { group: qualify(control.group || ":root") } : {}),
+      ...(control.matrix ? { matrix: qualify(control.matrix) } : {}),
+      ...(control.row ? { row: qualify(control.row) } : {})
+    }));
+    const children: PageState[] = [];
+    for (const entry of own.frames ?? []) {
+      const element = await frame.locator(entry.selector).elementHandle();
+      const child = await element?.contentFrame();
+      if (!child) continue;
+      if (isVerificationFrame(child.url())) continue;
+      // srcdoc/about:blank frames inherit their parent's authorized origin.
+      if (!["about:blank", "about:srcdoc"].includes(child.url())) this.assertAllowed(child.url());
+      children.push(await this.captureFrame(child, [...path, entry.selector]));
+    }
+    const all = [own, ...children];
+    return {
+      ...own,
+      documentUrls: [own.url, ...children.flatMap((state) => state.documentUrls ?? [])].filter(
+        (url) => !url.startsWith("about:")
+      ),
+      controls: [...controls, ...children.flatMap((state) => state.controls)],
+      text: all
+        .map((state) => state.text)
+        .join("\n")
+        .slice(0, this.maxText),
+      hasUnsupported: all.some((state) => state.hasUnsupported),
+      hasAuthentication: all.some((state) => state.hasAuthentication),
+      hasCaptcha: all.some((state) => state.hasCaptcha),
+      captchaDetected: all.some((state) => state.captchaDetected),
+      captchaResponsePresent: all
+        .filter((state) => state.hasCaptcha || state.captchaDetected)
+        .every((state) => state.captchaResponsePresent === true),
+      complete: all.some((state) => state.complete),
+      validationErrors: all.flatMap((state) => state.validationErrors ?? [])
+    };
+  }
   public async click(selector: string): Promise<void> {
     this.check();
-    const locator = this.page.locator(selector);
+    const locator = this.locator(selector);
     const href = await locator.getAttribute("href");
-    if (href) this.assertAllowed(new URL(href, this.page.url()).href);
+    if (href)
+      this.assertAllowed(await locator.evaluate((element) => (element as HTMLAnchorElement).href));
     await locator.click();
     this.check();
   }
   public async type(selector: string, value: string): Promise<void> {
     this.check();
-    const locator = this.page.locator(selector);
+    const locator = this.locator(selector);
     await locator.fill(value);
-    if ((await locator.inputValue()) !== value) throw new Error("Input verification failed.");
+    const actual = await locator.evaluate((element) =>
+      element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+        ? element.value
+        : element.textContent
+    );
+    if (actual !== value) throw new Error("Input verification failed.");
   }
   public async selectDropdown(selector: string, value: string): Promise<void> {
     this.check();
-    const locator = this.page.locator(selector);
+    const locator = this.locator(selector);
     await locator.selectOption(value);
     if ((await locator.inputValue()) !== value) throw new Error("Selection verification failed.");
   }
   public async selectRadio(selector: string): Promise<void> {
     this.check();
-    const locator = this.page.locator(selector);
-    await locator.check();
-    if (!(await locator.isChecked())) throw new Error("Radio verification failed.");
+    const locator = this.locator(selector);
+    if ((await locator.getAttribute("role")) === "radio") {
+      if ((await locator.getAttribute("aria-checked")) !== "true") await locator.click();
+      if ((await locator.getAttribute("aria-checked")) !== "true")
+        throw new Error("Radio verification failed.");
+    } else {
+      await locator.check();
+      if (!(await locator.isChecked())) throw new Error("Radio verification failed.");
+    }
   }
   public async setCheckbox(selector: string, checked: boolean): Promise<void> {
     this.check();
-    const locator = this.page.locator(selector);
-    await locator.setChecked(checked);
-    if ((await locator.isChecked()) !== checked) throw new Error("Checkbox verification failed.");
+    const locator = this.locator(selector);
+    if ((await locator.getAttribute("role")) === "checkbox") {
+      if (((await locator.getAttribute("aria-checked")) === "true") !== checked)
+        await locator.click();
+      if (((await locator.getAttribute("aria-checked")) === "true") !== checked)
+        throw new Error("Checkbox verification failed.");
+    } else {
+      await locator.setChecked(checked);
+      if ((await locator.isChecked()) !== checked) throw new Error("Checkbox verification failed.");
+    }
   }
   public async waitForNavigation(previousUrl: string, timeoutMs = 5000): Promise<NavigationState> {
     if (this.currentUrl() === previousUrl) {

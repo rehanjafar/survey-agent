@@ -84,6 +84,37 @@ describe("AnswerDecisionEngine", () => {
     database.close();
   });
 
+  it("asks the provider about objective questions even with an empty profile", async () => {
+    const database = store();
+    const provider = {
+      decide: vi.fn(async () => ({
+        selectedOption: "Blue",
+        confidence: 0.99,
+        reason: "Objective answer"
+      }))
+    };
+    const result = await new AnswerDecisionEngine(database, provider).decide({
+      ...question,
+      prompt: "Which color is the clear daytime sky?"
+    });
+    expect(result.status).toBe("action");
+    expect(provider.decide).toHaveBeenCalledWith(
+      expect.objectContaining({ relevantProfileFacts: [] })
+    );
+    database.close();
+  });
+  it("does not ask a provider to invent a missing bound personal fact", async () => {
+    const database = store();
+    const provider = { decide: vi.fn() };
+    expect(
+      await new AnswerDecisionEngine(database, provider).decide({
+        ...question,
+        factKey: "preferred_color"
+      })
+    ).toMatchObject({ status: "review", reason: "missing_information" });
+    expect(provider.decide).not.toHaveBeenCalled();
+    database.close();
+  });
   it("does not cache an unrecognized or unsupported answer", async () => {
     const database = store();
     const primary: LlmProvider = {

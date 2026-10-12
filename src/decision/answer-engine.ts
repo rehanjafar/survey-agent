@@ -1,3 +1,5 @@
+import { ProviderError } from "../providers/provider-error.js";
+import type { PageState } from "../browser/types.js";
 import type { NormalizedQuestion, ReviewRequired, SurveyAction } from "../domain/survey.js";
 import type { LlmProvider, ProviderDecision, ProviderQuestion } from "../providers/types.js";
 import { parseDecision } from "../providers/decision-schema.js";
@@ -81,7 +83,12 @@ export class AnswerDecisionEngine {
       }
     }
     const payload = providerQuestion(question, this.store);
-    if (payload.relevantProfileFacts.length === 0)
+    if (
+      payload.relevantProfileFacts.length === 0 &&
+      (question.factKey ||
+        /^(country|age|gender|income|occupation|household size)[?*: ]*$/i.test(question.prompt) ||
+        /\b(your|you (?:live|own|prefer|work|earn|feel))\b/i.test(question.prompt))
+    )
       return this.review(
         "missing_information",
         "Add the relevant profile fact or supply an answer in the review panel."
@@ -95,11 +102,49 @@ export class AnswerDecisionEngine {
       )
         return this.validate(question, await this.fallbackProvider.decide(payload), "llm");
       return decision;
-    } catch {
+    } catch (error) {
       return this.review(
         "provider_error",
-        "The provider could not return a valid answer. Check credentials, model, quota and connectivity."
+        error instanceof ProviderError
+          ? error.message
+          : "The provider could not return a valid answer. Run Test ChatGPT in Connections & setup to check the connection."
       );
+    }
+  }
+  /** Ask only about observed control labels; the model cannot invent URLs or selectors. */
+  public async navigation(
+    page: PageState
+  ): Promise<{ selector: string; submit: boolean } | undefined> {
+    const candidates = page.controls.filter(
+      (control) =>
+        control.kind === "button" &&
+        !control.disabled &&
+        /\b(next|continue|proceed|begin|start|launch|ready|survey|study)\b|^[→›»]$/i.test(
+          control.label
+        ) &&
+        !/\b(consent|agree|accept|purchase|buy|pay|delete|withdraw|return|cancel|back|login|sign|account|settings|privacy|terms|help|logout|cash|redeem|submit|finish|complete)\b/i.test(
+          control.label
+        )
+    );
+    if (!candidates.length || candidates.length > 20) return undefined;
+    const options = candidates.map(
+      (control, index) => `${index + 1}: ${control.label.slice(0, 300)}`
+    );
+    try {
+      const answer = parseDecision(
+        await this.provider.decide({
+          question:
+            "Which ONE of these visible controls proceeds to the next survey/study page? Choose only an unambiguous continuation or start action. Never choose consent, account changes, payments, completion codes or final submission. If unclear return confidence 0.",
+          type: "single_choice",
+          options,
+          relevantProfileFacts: []
+        })
+      );
+      const index = options.indexOf(answer.selectedOption ?? "");
+      if (answer.confidence < this.minimumConfidence || index < 0) return undefined;
+      return { selector: candidates[index]!.selector, submit: false };
+    } catch {
+      return undefined;
     }
   }
   public human(question: NormalizedQuestion, answer: ProviderDecision): DecisionResult {

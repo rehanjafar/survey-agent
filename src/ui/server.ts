@@ -1,3 +1,4 @@
+import { ProviderError } from "../providers/provider-error.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ChatGPTAuth } from "../auth/chatgpt-auth.js";
@@ -35,7 +36,9 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
   const store = new SqliteStore(join(dataDirectory, "agent.sqlite"));
   store.recoverRuns();
   const auth = new ChatGPTAuth(dataDirectory);
-  let authStatus = "Not connected";
+  let authStatus = (await auth.credentials())
+    ? "Saved ChatGPT connection — use Test ChatGPT to verify"
+    : "Not connected";
   let models: readonly string[] = [];
   let signingIn: Promise<void> | undefined;
   let signInUrl: string | undefined;
@@ -187,6 +190,36 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           models = await plan().models();
           authStatus = "Connected";
           break;
+        case "/api/chatgpt/test": {
+          const input = z
+            .object({ model: z.string().trim().min(1).max(200) })
+            .strict()
+            .parse(body);
+          authStatus = "Testing a small automatic ChatGPT request…";
+          try {
+            models = await plan().models();
+            if (!models.includes(input.model))
+              throw new ProviderError("Select an available model from Refresh available models.");
+            const answer = await plan(input.model).decide({
+              question: "What is 2 + 2?",
+              type: "single_choice",
+              options: ["4", "5"],
+              relevantProfileFacts: []
+            });
+            if (answer.selectedOption !== "4" || answer.confidence < 0.9)
+              throw new ProviderError(
+                "ChatGPT connected but did not return the expected structured answer. Try another available model."
+              );
+            authStatus =
+              "Verified: ChatGPT returned an automatic answer. Save Automatic mode and your model below.";
+          } catch (error) {
+            authStatus =
+              error instanceof ProviderError
+                ? error.message
+                : "ChatGPT test failed. Reconnect ChatGPT, refresh available models, and retry. No paid fallback was attempted.";
+          }
+          break;
+        }
         case "/api/phone/setup":
           await ensurePhoneSetup(dataDirectory);
           break;

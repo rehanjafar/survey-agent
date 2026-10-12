@@ -11,11 +11,19 @@ export function snapshot(maxText: number): PageState {
       !element.closest("[hidden],[inert]")
     );
   };
+  const roots: (Document | ShadowRoot)[] = [document];
+  for (let i = 0; i < roots.length; i++)
+    for (const element of Array.from(roots[i]!.querySelectorAll("*")))
+      if (element.shadowRoot) roots.push(element.shadowRoot);
+  const queryAll = (selector: string): HTMLElement[] =>
+    roots.flatMap((root) => Array.from(root.querySelectorAll<HTMLElement>(selector)));
   const selectorFor = (element: Element): string => {
-    if (element.id && document.querySelectorAll("#" + CSS.escape(element.id)).length === 1)
-      return "#" + CSS.escape(element.id);
+    const root = element.getRootNode() as Document | ShadowRoot;
+    const scope = root instanceof ShadowRoot ? selectorFor(root.host) + " >> " : "";
+    if (element.id && root.querySelectorAll("#" + CSS.escape(element.id)).length === 1)
+      return scope + "#" + CSS.escape(element.id);
     const parent = element.parentElement;
-    if (!parent) return element.tagName.toLowerCase();
+    if (!parent) return scope + element.tagName.toLowerCase();
     const siblings = Array.from(parent.children).filter(
       (child) => child.tagName === element.tagName
     );
@@ -33,10 +41,16 @@ export function snapshot(maxText: number): PageState {
   const ariaText = (element: Element) =>
     (element.getAttribute("aria-labelledby") ?? "")
       .split(/\s+/)
-      .map((id) => text(document.getElementById(id)))
+      .filter(Boolean)
+      .map((id) =>
+        text((element.getRootNode() as Document | ShadowRoot).querySelector("#" + CSS.escape(id)))
+      )
       .filter(Boolean)
       .join(" ");
   const kind = (element: Element): InteractiveControlKind => {
+    if (element.matches("[role=radio]")) return "radio";
+    if (element.matches("[role=checkbox]")) return "checkbox";
+    if (element.matches('[contenteditable="true"][role="textbox"]')) return "textarea";
     if (element.matches("button,a[href],[role=button]")) return "button";
     if (element instanceof HTMLSelectElement) return element.multiple ? "other" : "select";
     if (element instanceof HTMLTextAreaElement) return "textarea";
@@ -49,10 +63,8 @@ export function snapshot(maxText: number): PageState {
     }
     return "other";
   };
-  const elements = Array.from(
-    document.querySelectorAll<HTMLElement>(
-      "input,select,textarea,button,a[href],[role=button],[role=radio],[role=checkbox],[role=slider],[role=combobox]"
-    )
+  const elements = queryAll(
+    'input,select,textarea,button,a[href],[role=button],[role=radio],[role=checkbox],[role=slider],[role=combobox],[contenteditable="true"][role="textbox"]'
   );
   const controls: InteractiveControl[] = elements
     .filter((element) => {
@@ -71,12 +83,18 @@ export function snapshot(maxText: number): PageState {
         element instanceof HTMLTextAreaElement
           ? element
           : undefined;
-      const group = element.closest("fieldset,[role=group],[role=radiogroup],[data-question]");
+      const group = element.closest(
+        "fieldset,[role=group],[role=radiogroup],[data-question],.QuestionOuter,.question-container,.sv-question"
+      );
       const table = element.closest("table");
       const row = element.closest("tr");
       const question =
-        text(group?.querySelector("legend,[data-question-text],h2,h3") ?? null) ||
-        (group ? ariaText(group) : "") ||
+        text(
+          group?.querySelector(
+            "legend,[data-question-text],.QuestionText,.sv-question__title,h2,h3"
+          ) ?? null
+        ) ||
+        (group ? group.getAttribute("aria-label") || ariaText(group) : "") ||
         element.getAttribute("data-question-text") ||
         "";
       const labels = input ? Array.from(input.labels ?? []).map(text) : [];
@@ -84,7 +102,8 @@ export function snapshot(maxText: number): PageState {
         element.getAttribute("aria-label") ||
         ariaText(element) ||
         [...new Set(labels)].join(" ") ||
-        (input ? (element.getAttribute("placeholder") ?? "") : text(element));
+        (input ? (element.getAttribute("placeholder") ?? "") : text(element)) ||
+        (input && ["submit", "button", "reset"].includes(input.type) ? input.value : "");
       if (table && row && input && input.type === "radio") {
         const cell = element.closest("td");
         const index = cell ? Array.from(row.children).indexOf(cell) : -1;
@@ -121,7 +140,10 @@ export function snapshot(maxText: number): PageState {
         placeholder: element.getAttribute("placeholder") ?? "",
         value: input?.value ?? element.getAttribute("value") ?? "",
         href: element instanceof HTMLAnchorElement ? element.href : "",
-        checked: element instanceof HTMLInputElement ? element.checked : false,
+        checked:
+          element instanceof HTMLInputElement
+            ? element.checked
+            : element.getAttribute("aria-checked") === "true",
         disabled: element.matches(":disabled") || element.getAttribute("aria-disabled") === "true",
         required: input?.required ?? false,
         options:
@@ -158,36 +180,52 @@ export function snapshot(maxText: number): PageState {
         scale: group?.getAttribute("data-question-type") === "scale"
       };
     });
-  const pageText = document.body?.innerText.trim().slice(0, maxText) ?? "";
+  const pageText = [
+    document.body?.innerText ?? "",
+    ...roots.slice(1).map((root) =>
+      Array.from(root.children)
+        .filter(visible)
+        .map((element) => (element as HTMLElement).innerText || "")
+        .join("\n")
+    )
+  ]
+    .join("\n")
+    .trim()
+    .slice(0, maxText);
   return {
     url: location.href,
     title: document.title,
     text: pageText,
     controls,
-    captchaResponsePresent: Array.from(
-      document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
-        '[name="g-recaptcha-response"],[name="h-captcha-response"],[name="cf-turnstile-response"]'
-      )
-    ).some((input) => input.value.trim().length > 0),
-    captchaDetected: Array.from(document.querySelectorAll("iframe")).some(
-      (frame) =>
+    captchaResponsePresent: queryAll(
+      '[name="g-recaptcha-response"],[name="h-captcha-response"],[name="cf-turnstile-response"]'
+    ).some(
+      (input) =>
+        (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) &&
+        input.value.trim().length > 0
+    ),
+    captchaDetected: queryAll("iframe").some((element) => {
+      const frame = element as HTMLIFrameElement;
+      return (
         visible(frame) &&
         /captcha|challenge|verify you are human/i.test(`${frame.title} ${frame.src}`)
-    ),
+      );
+    }),
     hasCaptcha:
       Boolean(
-        document.querySelector(
-          "iframe[src*='recaptcha'],iframe[src*='hcaptcha'],[class*='g-recaptcha'],[class*='h-captcha'],[data-sitekey]"
-        )
+        queryAll(
+          "iframe[src*='recaptcha'],iframe[src*='hcaptcha'],iframe[src*='challenges.cloudflare.com'],[class*='g-recaptcha'],[class*='h-captcha'],[data-sitekey]"
+        ).length
       ) || /\b(captcha|verify you are human)\b/i.test(pageText),
     hasAuthentication:
       controls.some((control) => control.inputType === "password") ||
       /\b(sign in to continue|log in to continue|session expired|authentication failed|verification code)\b/i.test(
         pageText
       ),
-    hasUnsupported:
-      controls.some((control) => control.kind === "other") ||
-      Array.from(document.querySelectorAll("iframe")).some(visible),
+    frames: queryAll("iframe")
+      .filter(visible)
+      .map((frame) => ({ selector: selectorFor(frame) })),
+    hasUnsupported: controls.some((control) => control.kind === "other"),
     complete:
       Boolean(document.querySelector("[data-survey-complete]")) ||
       /^(survey complete|thank you for completing (the|this) survey)[.!]?$/im.test(pageText),
