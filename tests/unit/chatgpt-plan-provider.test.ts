@@ -56,8 +56,7 @@ describe("ChatGPT plan provider", () => {
     const result = await new ChatGPTPlanProvider(async () => "test-oauth", "account-model").decide({
       question: "Which?",
       type: "single_choice",
-      options: ["A"],
-      relevantProfileFacts: []
+      options: ["A"]
     });
     expect(result).toEqual(reply);
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -77,8 +76,7 @@ describe("ChatGPT plan provider", () => {
       new ChatGPTPlanProvider(async () => "test", "model").decide({
         question: "Q",
         type: "text",
-        options: [],
-        relevantProfileFacts: []
+        options: []
       })
     ).rejects.toThrow(/no paid fallback/i);
     expect(fetchMock).toHaveBeenCalledOnce();

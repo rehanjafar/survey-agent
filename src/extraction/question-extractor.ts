@@ -89,7 +89,6 @@ export function extractQuestions(state: PageState): NormalizedQuestion[] {
             : control.kind === "number"
               ? "numeric"
               : "text";
-    const factKey = inferFactKey(prompt);
     const constraints = {
       ...(control.min !== undefined ? { min: control.min } : {}),
       ...(control.max !== undefined ? { max: control.max } : {}),
@@ -110,7 +109,6 @@ export function extractQuestions(state: PageState): NormalizedQuestion[] {
       ...(["text", "numeric", "dropdown"].includes(type)
         ? { inputSelector: control.selector }
         : {}),
-      ...(factKey ? { factKey } : {}),
       ...constraints
     });
   }
@@ -134,21 +132,4 @@ function questionPrompt(state: PageState, control: InteractiveControl): string {
   if (["text", "number", "textarea", "select"].includes(control.kind) && control.label)
     return control.label;
   throw new Error("Could not confidently associate a prompt with its controls.");
-}
-// Exact, conservative bindings only; website data-fact-key attributes are not trusted.
-export function inferFactKey(prompt: string): string | undefined {
-  const cleaned = prompt.toLowerCase().replace(/[?*:]/g, "").trim();
-  const bindings: Record<string, string> = {
-    age: "age",
-    "what is your age": "age",
-    "how old are you": "age",
-    country: "country",
-    "what country do you live in": "country",
-    "which country do you live in": "country",
-    "household size": "household_size",
-    "how many people live in your household": "household_size",
-    "which color do you prefer": "preferred_color",
-    "preferred color": "preferred_color"
-  };
-  return bindings[cleaned];
 }

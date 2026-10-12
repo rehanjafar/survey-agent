@@ -163,9 +163,6 @@ export function snapshot(maxText: number): PageState {
           : question || (input && !["radio", "checkbox"].includes(input.type) ? label : ""),
         group: group ? selectorFor(group) : "",
         inputType: element.getAttribute("type") ?? "",
-        ...(element.getAttribute("data-fact-key")
-          ? { factKey: element.getAttribute("data-fact-key")! }
-          : {}),
         ...(min !== undefined ? { min } : {}),
         ...(max !== undefined ? { max } : {}),
         ...(step !== undefined ? { step } : {}),

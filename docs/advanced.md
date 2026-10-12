@@ -11,7 +11,7 @@ in their original folder. The dashboard preserves the merged PR's richer questio
 validation and manual-review UI; the terminal loop supports one question at a time.
 
 A local survey agent for explicitly authorized environments. It reuses Playwright,
-Eureka offer discovery, normalized questions, SQLite answer/profile memory, and
+Eureka offer discovery, normalized questions, SQLite answer memory, and
 validated structured actions. It can run supported survey pages automatically,
 using your eligible ChatGPT plan, and pause with a phone notification when a human
 needs to resolve a CAPTCHA or login problem.
@@ -121,32 +121,13 @@ it. It resumes only after two successive page captures show the stop condition h
 cleared. It checks again before executing any model decision. The browser stays
 open for other review stops and review timeouts; press Enter or Ctrl+C to disconnect.
 
-Low confidence, missing facts, unknown hosts, unsupported question types, multiple
+Low confidence, unavailable context, unknown hosts, unsupported question types, multiple
 question groups, ambiguous navigation controls, provider/usage failures, and pages
 that don't advance remain review stops. The current generic extractor supports one
 single-choice, dropdown, text, or numeric question per page. Matrices, checkbox
 questions, nested survey frames, and arbitrary multi-question layouts need a specific
 adapter before automatic execution. It does not claim universal survey coverage or
 record inferred earnings as actual payment. Test only against local mocks.
-
-### Import truthful profile facts
-
-Create a local file under `data/`, using facts/preferences you have supplied:
-
-```json
-[
-  { "key": "country", "value": "Canada", "kind": "stable", "established": true },
-  { "key": "color preference", "value": "Blue", "kind": "preference", "established": true }
-]
-```
-
-```sh
-corepack pnpm agent profile-import ./data/profile.json
-```
-
-Only relevant facts go to the model. Missing demographics, experiences, and opinions
-must not be invented. Import conflicts preserve established facts and create a
-review record. Review your facts before importing; the example values are illustrative.
 
 ## Authorized navigation model
 
@@ -191,7 +172,7 @@ low-confidence/missing/invalid primary answers. Automated `run` accepts only
 All browser tests use local mock surveys. OAuth, inference, and notifications are
 mocked; no live surveys, real phone messages, or billable requests run in tests.
 
-Never commit credentials, browser profiles, screenshots, personal facts, logs, or
+Never commit credentials, browser profiles, screenshots, answer history, logs, or
 SQLite databases. The default `data/` directory and credential files are ignored.
 No CAPTCHA solving, authentication bypass, anti-bot evasion, or concealment is
 implemented. See [AGENTS.md](../AGENTS.md).

@@ -15,6 +15,6 @@ export function chatPrompt(question: ProviderQuestion): string {
     instructions +
     "\n\n" +
     JSON.stringify(question) +
-    "\nIf the facts do not establish an answer, ask me; do not invent it."
+    "\nIf the available context does not establish an answer, ask me; do not invent it."
   );
 }

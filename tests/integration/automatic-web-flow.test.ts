@@ -77,8 +77,9 @@ it("finds a survey hub, selects an offer and opens study details on an unnamed p
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const directory = await mkdtemp(join(tmpdir(), "generic-discovery-"));
   const store = new SqliteStore(join(directory, "agent.sqlite"));
-  store.upsertFact({ key: "age", value: "30", kind: "stable", established: true });
-  const provider = { decide: vi.fn() };
+  const provider = {
+    decide: vi.fn(async () => ({ value: "30", confidence: 1, reason: "Mock chat context" }))
+  };
   const runner = new SurveyRunner(
     store,
     (settings) => new PlaywrightChromiumBrowser({ allowedDomains: settings.allowedDomains }),
@@ -97,7 +98,7 @@ it("finds a survey hub, selects an offer and opens study details on an unnamed p
     );
     await runner.idle();
     expect(runner.state()).toMatchObject({ run: { status: "completed", steps: 5 } });
-    expect(provider.decide).not.toHaveBeenCalled();
+    expect(provider.decide).toHaveBeenCalledOnce();
   } finally {
     await runner.stop();
     store.close();

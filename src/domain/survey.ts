@@ -19,7 +19,6 @@ export interface NormalizedQuestion {
   readonly options: readonly SurveyOption[];
   readonly rows: readonly MatrixRow[];
   readonly inputSelector?: string;
-  readonly factKey?: string;
   readonly min?: number;
   readonly max?: number;
   readonly step?: number;

@@ -38,8 +38,7 @@ it("verifies an automatic answer through the dashboard and reports actionable fa
     expect(decide).toHaveBeenCalledWith({
       question: "What is 2 + 2?",
       type: "single_choice",
-      options: ["4", "5"],
-      relevantProfileFacts: []
+      options: ["4", "5"]
     });
     decide.mockRejectedValueOnce(
       new ProviderError("ChatGPT usage limit reached. No paid fallback was attempted.")

@@ -4,52 +4,38 @@ import {
   parseBrowserChatReply,
   regularChatUrl
 } from "../../src/providers/chatgpt-browser-provider.js";
-const facts = [{ key: "vehicle", value: "I own one car" }];
-const answer = { selectedOption: "Yes", confidence: 1, reason: "Confirmed vehicle fact" };
-it("requires request correlation and confirmed fact provenance for personal answers", () => {
-  expect(
-    parseBrowserChatReply(
-      JSON.stringify({ requestId: "one", personal: true, sourceFactKeys: ["vehicle"], answer }),
-      "one",
-      facts
-    )
-  ).toEqual(answer);
-  expect(
-    parseBrowserChatReply(
-      JSON.stringify({ requestId: "one", personal: true, sourceFactKeys: ["invented"], answer }),
-      "one",
-      facts
-    ).confidence
-  ).toBe(0);
-  expect(
-    parseBrowserChatReply(
-      JSON.stringify({ requestId: "one", personal: false, sourceFactKeys: [], answer }),
-      "one",
-      facts,
-      true
-    ).confidence
-  ).toBe(0);
-  expect(() =>
-    parseBrowserChatReply(
-      JSON.stringify({ requestId: "old", personal: true, sourceFactKeys: ["vehicle"], answer }),
-      "one",
-      facts
-    )
-  ).toThrow();
-});
-it("keeps confirmed profile and untrusted question data separate in the dedicated-chat prompt", () => {
-  const prompt = browserChatPrompt(
-    {
-      question: "Do you own a car?",
-      type: "single_choice",
-      options: ["Yes", "No"],
-      relevantProfileFacts: []
-    },
-    facts,
-    "one"
+const answer = { selectedOption: "Yes", confidence: 1, reason: "Available chat context" };
+it("accepts personal answers without local fact keys and requires request correlation", () => {
+  expect(parseBrowserChatReply(JSON.stringify({ requestId: "one", answer }), "one")).toEqual(
+    answer
   );
-  expect(prompt).toContain('"confirmedProfile":[{"key":"vehicle","value":"I own one car"}]');
-  expect(prompt).toContain("never invent or optimize eligibility");
+  expect(() =>
+    parseBrowserChatReply(JSON.stringify({ requestId: "old", answer }), "one")
+  ).toThrow();
+  expect(() =>
+    parseBrowserChatReply(JSON.stringify({ requestId: "one", answer: { confidence: 2 } }), "one")
+  ).toThrow();
+  expect(
+    parseBrowserChatReply(
+      JSON.stringify({ requestId: "one", answer: { confidence: 0, reason: "No context" } }),
+      "one"
+    ).confidence
+  ).toBe(0);
+});
+it("sends only the active question and asks ChatGPT to use context actually available", () => {
+  const question = {
+    question: "Do you own a car?",
+    type: "single_choice" as const,
+    options: ["Yes", "No"]
+  };
+  const prompt = browserChatPrompt(question, "one");
+  expect(JSON.parse(prompt.split("\n").at(-1)!)).toEqual({
+    requestId: "one",
+    activeQuestion: question
+  });
+  expect(prompt).toContain("personal context actually available");
+  expect(prompt).toContain("never invent");
+  expect(prompt).not.toContain("confirmedProfile");
 });
 it("only restores dedicated ordinary-chat URLs on the exact ChatGPT origin", () => {
   expect(regularChatUrl("https://chatgpt.com/c/1234-abcd")).toBe(true);
