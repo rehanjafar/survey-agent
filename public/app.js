@@ -98,6 +98,8 @@ function fillSettings(config) {
   $("continuous-surveys").checked = config.continuousSurveys;
   $("offer-poll").value = config.offerPollSeconds;
   $("headless").checked = config.headless;
+  $("browser-choice").value = config.browser;
+  $("autonomous-recovery").checked = config.autonomousRecovery;
   $("restart-run").checked = config.restartLastRun;
 }
 async function refresh() {
@@ -159,6 +161,15 @@ async function refresh() {
   );
   if (!$("chatgpt-model").value && state.chatgpt.models.length)
     $("chatgpt-model").value = state.chatgpt.models[0];
+  if (document.activeElement !== $("phone-answer-url"))
+    $("phone-answer-url").value = state.phone?.answerUrl || "";
+  $("phone-answer-test").disabled = !state.phoneAnswers?.ready || !state.phone?.confirmed;
+  $("phone-answer-status").textContent =
+    state.phoneAnswers?.error ||
+    (state.phoneAnswers?.ready
+      ? "Reply service ready — test from your phone with Tailscale connected."
+      : "Save your Tailscale address to enable phone answers.");
+  $("remote-desktop-test").disabled = !state.phone?.confirmed;
   const phone = state.phone;
   $("phone-server").textContent = phone ? new URL(phone.topicUrl).origin : "—";
   $("phone-topic").textContent = phone ? new URL(phone.topicUrl).pathname.slice(1) : "—";
@@ -353,6 +364,9 @@ $("settings-form").addEventListener("submit", async (event) => {
     continuousSurveys: $("continuous-surveys").checked,
     offerPollSeconds: Number($("offer-poll").value),
     headless: $("headless").checked,
+    browser: $("browser-choice").value,
+    autonomousRecovery: $("autonomous-recovery").checked,
+    swagbucksSetupVersion: 1,
     restartLastRun: $("restart-run").checked
   });
 });
@@ -422,3 +436,15 @@ $("platform").addEventListener("change", () => {
 });
 
 $("open-regular-chat").addEventListener("click", () => post("chatgpt/browser/open"));
+
+for (const target of ["swagbucks", "chatgpt"]) {
+  $("login-" + target).addEventListener("click", () => post("browser/login", { target }));
+}
+
+$("phone-answer-setup").addEventListener("submit", (event) => {
+  event.preventDefault();
+  void post("phone/answers", { url: $("phone-answer-url").value });
+});
+$("phone-answer-test").addEventListener("click", () => post("phone/answers/test"));
+
+$("remote-desktop-test").addEventListener("click", () => post("phone/remote/test"));

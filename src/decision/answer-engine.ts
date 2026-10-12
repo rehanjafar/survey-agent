@@ -38,7 +38,8 @@ export class AnswerDecisionEngine {
     private readonly store: SqliteStore,
     private readonly provider: LlmProvider,
     private readonly minimumConfidence = 0.9,
-    private readonly fallbackProvider?: LlmProvider
+    private readonly fallbackProvider?: LlmProvider,
+    private readonly bestEffort = false
   ) {}
   public async terminalOutcome(
     page: PageState
@@ -95,6 +96,17 @@ export class AnswerDecisionEngine {
         ["low_confidence", "unsupported_question"].includes(decision.reason)
       )
         return this.fromFallback(question, payload);
+      if (
+        this.bestEffort &&
+        decision.status === "review" &&
+        ["low_confidence", "unsupported_question"].includes(decision.reason)
+      ) {
+        return this.validate(
+          question,
+          await this.provider.decide({ ...payload, resolution: "best_supported_answer" }),
+          "llm"
+        );
+      }
       return decision;
     } catch (error) {
       if (this.fallbackProvider) return this.fromFallback(question, payload);
@@ -215,8 +227,17 @@ export class AnswerDecisionEngine {
     source: "cache" | "llm" | "human" | "survey_memory"
   ): DecisionResult {
     const answer = parseDecision(input) as ProviderDecision;
-    if (answer.confidence < this.minimumConfidence)
-      return this.review("low_confidence", "The answer needs your confirmation.");
+    const supportedBestEffort =
+      this.bestEffort &&
+      (source === "llm" || source === "survey_memory") &&
+      (answer.basis === "objective" || answer.basis === "abstention");
+    if (answer.confidence < this.minimumConfidence && !supportedBestEffort)
+      return this.review(
+        "low_confidence",
+        this.bestEffort
+          ? "Your answer is needed. The survey will wait while you respond from your phone."
+          : "The answer needs your confirmation."
+      );
     const remembered = this.store.cachedAnswer(question.fingerprint);
     if (remembered && source === "human") {
       try {

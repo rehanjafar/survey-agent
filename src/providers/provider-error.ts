@@ -20,5 +20,9 @@ export function providerHttpError(status: number): ProviderError {
           : status === 400 || status === 404
             ? "The selected ChatGPT model or request is unavailable. Refresh models and save an available model."
             : "ChatGPT is temporarily unavailable. Check connectivity and retry.";
-  return new ProviderError(reason + " No paid fallback was attempted.");
+  return new ProviderError(
+    reason + " No paid fallback was attempted.",
+    status === 401 || status === 403 ? "authentication_required" : "provider_error",
+    "chatgpt.com"
+  );
 }

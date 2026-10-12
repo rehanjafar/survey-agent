@@ -279,10 +279,17 @@
           >
         </article>
         <article class="card">
-          <h2>Ordinary ChatGPT fallback</h2>
+          <h2>Ordinary ChatGPT connection</h2>
           <p>
             A normal chat can use its available context before the agent alerts you. Its browser
             session is separate from your survey login and ChatGPT plan connection.
+          </p>
+          <button id="login-chatgpt" class="secondary">Open Chrome for ChatGPT login</button>
+          <button id="login-swagbucks" class="secondary">Open Chrome for Swagbucks login</button>
+          <p class="hint">
+            If Google says the browser may not be secure, use these normal Chrome windows to sign in
+            yourself. Quit those separate Chrome instances when finished, then open ordinary ChatGPT
+            or Start. These use the agent's separate profiles, not your normal Chrome profile.
           </p>
           <button id="open-regular-chat">Open ordinary ChatGPT</button>
           <p id="regular-chat-status">Not opened</p>
@@ -314,9 +321,95 @@
           ><button id="phone-confirm" disabled>I received it</button>
           <p id="phone-status">Not configured</p>
           <p class="hint">
-            Keep the random topic private. No SMS setup is needed. Solve CAPTCHA alerts yourself in
-            the survey browser, then click Resume. Missing alerts: check notification permissions,
+            Keep the random topic private. No SMS setup is needed. CAPTCHA alerts include an Open
+            laptop link; set up remote access below. Missing alerts: check notification permissions,
             Focus/Do Not Disturb, and the exact topic.
+          </p>
+        </article>
+        <article class="card">
+          <h2>Solve CAPTCHAs from your phone</h2>
+          <ol>
+            <li>
+              On this laptop, open
+              <a
+                href="https://remotedesktop.google.com/access"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Chrome Remote Desktop</a
+              >. Choose <b>Set up Remote Access</b>, install its host, name the laptop, and create a
+              PIN. Complete any requested macOS screen-recording and accessibility permissions.
+            </li>
+            <li>
+              On your phone, open the same page and sign in with the same Google account. Select
+              your laptop and enter its PIN. On iPhone, you can add the page to your Home Screen; on
+              Android, you can also use the Chrome Remote Desktop app.
+            </li>
+            <li>
+              Send the test alert below. Turn off phone Wi-Fi, tap <b>Open laptop</b> (or the
+              notification itself), and verify you can control the laptop.
+            </li>
+          </ol>
+          <button id="remote-desktop-test" class="secondary" disabled>
+            Send Open laptop test alert
+          </button>
+          <p>
+            CAPTCHA and login alerts automatically include this shortcut. It opens your computer
+            list; Google sign-in and your remote-access PIN still protect the connection. Do not
+            enter that PIN in Survey Agent.
+          </p>
+          <p>
+            You solve the CAPTCHA yourself in the existing browser. Survey CAPTCHA checks resume
+            automatically in continuous mode once clear. For ChatGPT CAPTCHAs or login, also click
+            <b>Resume</b> on the laptop dashboard through remote access.
+          </p>
+          <p class="hint">
+            Keep the laptop awake and online. This needs its one-time remote-access installation;
+            the shortcut alone does not enable remote control.
+            <a
+              href="https://support.google.com/chrome/answer/1649523?hl=en"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Google's setup instructions</a
+            >
+          </p>
+        </article>
+        <article class="card">
+          <h2>Reply from your phone, anywhere</h2>
+          <p>
+            Install Tailscale on your laptop and phone, sign in to the same private network, and
+            keep both connected.
+          </p>
+          <p>
+            On the laptop, run <code>tailscale serve --bg http://127.0.0.1:4318</code>. Follow its
+            HTTPS setup link if prompted. Use Serve, not public Funnel. Only the question reply
+            service belongs on port 4318.
+          </p>
+          <p>
+            On Mac, if the command is missing, use
+            <code
+              >/Applications/Tailscale.app/Contents/MacOS/Tailscale serve --bg
+              http://127.0.0.1:4318</code
+            >.
+          </p>
+          <form id="phone-answer-setup">
+            <label for="phone-answer-url">HTTPS address printed by Tailscale</label>
+            <input
+              id="phone-answer-url"
+              type="url"
+              placeholder="https://laptop.example.ts.net"
+              required
+            />
+            <button type="submit">Save phone reply address</button>
+          </form>
+          <button id="phone-answer-test" class="secondary" disabled>
+            Send a test question to my phone
+          </button>
+          <p id="phone-answer-status">Not configured</p>
+          <p class="hint">
+            Tap the ntfy alert to choose an answer. Four survey choices appear first, with all
+            others one tap away. No answer is preselected. Keep notification links private: each
+            permits one answer to its question. Questions and answers travel through Tailscale, not
+            ntfy.
           </p>
         </article>
         <form id="settings-form" class="card settings-form">
@@ -331,16 +424,21 @@
             id="chatgpt-models"
           ></datalist>
           <h2>Survey browser</h2>
+          <label for="browser-choice">Browser</label
+          ><select id="browser-choice">
+            <option value="chrome">Installed Google Chrome</option>
+            <option value="chromium">Bundled Chromium (local testing)</option>
+          </select>
+          <label class="check"
+            ><input id="autonomous-recovery" type="checkbox" /> Resolve uncertain answers
+            automatically; ask my phone when my answer is needed</label
+          >
           <label for="start-url">Starting URL</label><input id="start-url" type="url" required />
           <div class="form-grid">
             <div>
-              <label for="platform">Website adapter</label
+              <label for="platform">Survey platform</label
               ><select id="platform">
                 <option value="swagbucks">Swagbucks</option>
-                <option value="eureka">Eureka Surveys</option>
-                <option value="prolific">Prolific</option>
-                <option value="branded">Branded Surveys</option>
-                <option value="generic">Generic survey</option>
               </select>
             </div>
             <div>
@@ -486,16 +584,16 @@
           <h2>Computer or phone?</h2>
           <p>
             Windows and macOS run the browser engine. This dashboard is responsive, but iOS and
-            Android cannot run this application independently. For phone access, use trusted
-            remote-desktop software to your running computer. This app stays local-only; do not
-            port-forward it.
+            Android cannot run this application independently. To answer questions from your phone,
+            configure Tailscale above. For full browser control, use trusted remote-desktop software
+            to your running computer. This app stays local-only; do not port-forward it.
           </p>
           <h2>First run</h2>
           <ol>
             <li>
               Use Try local practice to learn the review flow without opening an external survey.
             </li>
-            <li>Choose your platform and authorized domains under Connections & setup.</li>
+            <li>Confirm Swagbucks and authorized domains under Connections & setup.</li>
             <li>Start a survey. Sign in manually in the browser if prompted, then Resume.</li>
             <li>
               When a question needs your input, answer in the review panel or use the ChatGPT

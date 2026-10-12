@@ -1,3 +1,6 @@
+import { PhoneAnswerServer } from "./phone-answer-server.js";
+import { phoneAnswerOrigin } from "../notifications/phone-setup.js";
+import { chromeProfile, openChromeLogin } from "../browser/chrome-login.js";
 import { ChatGPTBrowserProvider } from "../providers/chatgpt-browser-provider.js";
 import { ProviderError } from "../providers/provider-error.js";
 import { execFile } from "node:child_process";
@@ -12,7 +15,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { z } from "zod";
-import { settingsSchema } from "../config/app-settings.js";
+import { settingsSchema, swagbucksSettings } from "../config/app-settings.js";
 import type { AppSettings } from "../config/app-settings.js";
 import { PlaywrightChromiumBrowser } from "../browser/index.js";
 import { AnswerDecisionEngine } from "../decision/answer-engine.js";
@@ -25,10 +28,15 @@ import { mockSurvey } from "../mock/survey.js";
 export async function createApplication(dataDirectory: string, initial?: AppSettings) {
   await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
   const configPath = join(dataDirectory, "settings.json");
-  let settings = initial ?? settingsSchema.parse({});
+  let settings = initial ?? swagbucksSettings();
   if (!initial) {
     try {
-      settings = settingsSchema.parse(JSON.parse(await readFile(configPath, "utf8")));
+      const saved = JSON.parse(await readFile(configPath, "utf8"));
+      settings = swagbucksSettings(saved);
+      if (!saved.swagbucksSetupVersion) {
+        await writeFile(configPath + ".tmp", JSON.stringify(settings, null, 2), { mode: 0o600 });
+        await rename(configPath + ".tmp", configPath);
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
         throw new Error("Settings file is invalid. Correct it before starting the application.");
@@ -36,7 +44,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
   }
   const store = new SqliteStore(join(dataDirectory, "agent.sqlite"));
   store.recoverRuns();
-  const regularChat = new ChatGPTBrowserProvider(dataDirectory);
+  const regularChat = new ChatGPTBrowserProvider(dataDirectory, undefined, () => settings.browser);
   const auth = new ChatGPTAuth(dataDirectory);
   let authStatus = (await auth.credentials())
     ? "Saved ChatGPT connection — use Test ChatGPT to verify"
@@ -52,10 +60,13 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
         allowedDomains: [...config.allowedDomains, ...config.authDomains],
         navigationMode: config.navigationMode,
         headless: config.headless,
+        ...(config.browser === "chrome" ? { channel: "chrome" as const } : {}),
         userDataDirectory:
-          config.platform === "eureka" || config.platform === "generic"
-            ? join(dataDirectory, "browser-profile")
-            : join(dataDirectory, "profiles", config.platform)
+          config.browser === "chrome" && config.platform === "swagbucks"
+            ? chromeProfile(dataDirectory, "swagbucks")
+            : config.platform === "eureka" || config.platform === "generic"
+              ? join(dataDirectory, "browser-profile")
+              : join(dataDirectory, "profiles", config.platform)
       }),
     (config) =>
       new AnswerDecisionEngine(
@@ -68,15 +79,22 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
         config.minimumConfidence,
         config.regularChatFallback && config.provider !== "chatgpt_browser"
           ? regularChat
-          : undefined
+          : undefined,
+        config.platform === "swagbucks" && config.autonomousRecovery
       ),
     dataDirectory,
     async (event) => {
       const phone = await readPhoneSetup(dataDirectory);
       if (!phone?.confirmed) return false;
-      await new NtfyNotifier(phone.topicUrl).notify(event);
+      const answerUrl = phoneAnswers.answerLink();
+      await new NtfyNotifier(phone.topicUrl).notify({
+        ...event,
+        ...(answerUrl ? { answerUrl } : {})
+      });
     }
   );
+  const phoneAnswers = new PhoneAnswerServer(runner);
+  let phoneAnswerError = "";
   const token = randomBytes(32).toString("hex");
   let origin = "";
   let mutating = false;
@@ -149,6 +167,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
         regularChat: regularChat.status(),
         chatgpt: { status: authStatus, models, signingIn: Boolean(signingIn), signInUrl },
         phone: (await readPhoneSetup(dataDirectory)) ?? null,
+        phoneAnswers: { ...phoneAnswers.status(), error: phoneAnswerError },
         dataDirectory,
         mockUrl: origin + "/mock/eureka"
       });
@@ -244,6 +263,37 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           await savePhoneSetup(dataDirectory, { ...phone, tested: true });
           break;
         }
+        case "/api/phone/remote/test": {
+          const phone = await readPhoneSetup(dataDirectory);
+          if (!phone?.confirmed) throw new Error("Confirm your ntfy alerts first.");
+          await new NtfyNotifier(phone.topicUrl).notify({
+            reason: "remote_desktop_test",
+            host: "local-agent"
+          });
+          break;
+        }
+        case "/api/phone/answers": {
+          const { url } = z
+            .object({ url: z.string().max(500) })
+            .strict()
+            .parse(body);
+          const answerUrl = phoneAnswerOrigin(url);
+          const phone = await ensurePhoneSetup(dataDirectory);
+          await phoneAnswers.configure(answerUrl);
+          await savePhoneSetup(dataDirectory, { ...phone, answerUrl });
+          phoneAnswerError = "";
+          break;
+        }
+        case "/api/phone/answers/test": {
+          const phone = await readPhoneSetup(dataDirectory);
+          if (!phone?.confirmed) throw new Error("Confirm your ntfy alerts first.");
+          await new NtfyNotifier(phone.topicUrl).notify({
+            reason: "phone_reply_test",
+            host: "local-agent",
+            answerUrl: phoneAnswers.testLink()
+          });
+          break;
+        }
         case "/api/phone/confirm": {
           z.object({ received: z.literal(true) })
             .strict()
@@ -253,6 +303,23 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           await savePhoneSetup(dataDirectory, { ...phone, confirmed: true });
           break;
         }
+        case "/api/browser/login": {
+          const { target } = z
+            .object({ target: z.enum(["swagbucks", "chatgpt"]) })
+            .strict()
+            .parse(body);
+          if (
+            runner.state().busy ||
+            ["running", "paused", "review"].includes(runner.state().run?.status ?? "")
+          )
+            throw new Error("Stop the run before opening a manual login window.");
+          if (regularChat.status().busy)
+            throw new Error("Wait for the current ChatGPT request to finish.");
+          await runner.stop();
+          await regularChat.close();
+          await openChromeLogin(dataDirectory, target);
+          break;
+        }
         case "/api/settings": {
           const run = runner.state().run;
           if (run && ["running", "review", "paused"].includes(run.status))
@@ -260,6 +327,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           const updated = settingsSchema.parse(body);
           await writeFile(configPath + ".tmp", JSON.stringify(updated, null, 2), { mode: 0o600 });
           await rename(configPath + ".tmp", configPath);
+          if (settings.browser !== updated.browser) await regularChat.close();
           settings = updated;
           break;
         }
@@ -279,6 +347,15 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
                 "Set up phone alerts, send a test, and click I received it before automatic runs."
               );
           }
+          if (
+            settings.platform === "swagbucks" &&
+            settings.autonomousRecovery &&
+            settings.provider !== "manual" &&
+            !phoneAnswers.status().ready
+          )
+            throw new Error(
+              "Save your Tailscale phone-answer address in Connections & setup before starting. Missing answers will wait for your phone."
+            );
           if (settings.provider === "chatgpt_plan") {
             if (!settings.chatgptModel || !(await plan().models()).includes(settings.chatgptModel))
               throw new Error(
@@ -293,6 +370,11 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
             startUrl: origin + "/mock/eureka",
             platform: "eureka",
             provider: "manual",
+            browser: "chromium",
+            autonomousRecovery: false,
+            autoAcceptConsent: false,
+            autoSubmit: false,
+            continuousSurveys: false,
             regularChatFallback: false,
             allowedDomains: ["127.0.0.1"],
             headless: true
@@ -369,6 +451,15 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("No local server address.");
       origin = "http://127.0.0.1:" + address.port;
+      const phone = await readPhoneSetup(dataDirectory);
+      if (phone?.answerUrl) {
+        try {
+          await phoneAnswers.configure(phone.answerUrl);
+        } catch {
+          phoneAnswerError =
+            "Phone reply service could not start on port 4318. Close any other agent instance, then save the phone address again.";
+        }
+      }
       if (
         settings.provider === "manual" &&
         settings.restartLastRun &&
@@ -380,6 +471,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     async close() {
       await runner.stop();
       await regularChat.close();
+      await phoneAnswers.close();
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
         server.closeIdleConnections();

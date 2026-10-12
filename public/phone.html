@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Answer your survey</title>
+    <link rel="stylesheet" href="/phone.css" />
+    <script src="/phone.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">SURVEY AGENT</p>
+      <h1>Your answer is needed</h1>
+      <p id="status" role="status">Opening the question…</p>
+      <form id="answer-form" hidden>
+        <h2 id="question" dir="auto"></h2>
+        <p>
+          Choose the answer that is true for you. These are the survey’s choices; nothing is
+          preselected.
+        </p>
+        <input
+          id="filter"
+          type="search"
+          placeholder="Find an option"
+          aria-label="Find an option"
+          hidden
+        />
+        <div id="controls" dir="auto"></div>
+        <details id="more" hidden>
+          <summary>Show all choices</summary>
+          <div id="other-controls" dir="auto"></div>
+        </details>
+        <button id="send" type="submit">Send answer to laptop</button>
+      </form>
+      <p class="hint">
+        Keep Tailscale connected on both devices and the laptop awake. This link only answers this
+        question.
+      </p>
+    </main>
+  </body>
+</html>

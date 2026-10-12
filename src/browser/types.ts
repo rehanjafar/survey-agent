@@ -103,3 +103,5 @@ export interface ChromiumBrowserOptions {
 }
 
 export type BrowserConnectionMode = "attached_chrome" | "managed_chromium";
+
+export class BrowserSetupError extends Error {}

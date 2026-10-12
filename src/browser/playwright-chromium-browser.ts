@@ -1,3 +1,4 @@
+import { BrowserSetupError } from "./types.js";
 import { chromium } from "playwright";
 import type {
   Browser,
@@ -43,14 +44,25 @@ export class PlaywrightChromiumBrowser implements BrowserAutomationDriver {
       this.context = this.browser.contexts()[0];
       if (!this.context) throw new Error("No existing Chrome context.");
     } else if (this.options.userDataDirectory) {
-      this.context = await chromium.launchPersistentContext(this.options.userDataDirectory, {
+      try {
+        this.context = await chromium.launchPersistentContext(this.options.userDataDirectory, {
+          headless: this.options.headless ?? true,
+          serviceWorkers: "block",
+          acceptDownloads: false,
+          ...(this.options.channel ? { channel: this.options.channel } : {})
+        });
+      } catch (error) {
+        if (this.options.channel === "chrome")
+          throw new BrowserSetupError(
+            "Could not open Google Chrome. Install Chrome if needed, close the manual login windows, then start again."
+          );
+        throw error;
+      }
+    } else {
+      this.browser = await chromium.launch({
         headless: this.options.headless ?? true,
-        serviceWorkers: "block",
-        acceptDownloads: false,
         ...(this.options.channel ? { channel: this.options.channel } : {})
       });
-    } else {
-      this.browser = await chromium.launch({ headless: this.options.headless ?? true });
     }
   }
   public async createSession(options: BrowserSessionOptions = {}): Promise<BrowserSession> {
@@ -270,6 +282,8 @@ class PlaywrightBrowserSession implements BrowserSession {
   }
   public async navigate(url: string): Promise<PageState> {
     this.assertAllowed(url);
+    this.pending = null;
+    this.blocked = false;
     await this.page.goto(url, { waitUntil: "domcontentloaded" });
     return this.capturePageState();
   }
