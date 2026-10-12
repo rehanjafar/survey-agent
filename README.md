@@ -1,10 +1,12 @@
 # Survey Agent
 
-A local dashboard for explicitly authorized survey work on **Prolific, Branded
+A local dashboard for explicitly authorized survey work on **Swagbucks, Prolific, Branded
 Surveys, Eureka, and supported generic survey pages**. It keeps browser logins and
 answer history on your computer, can use your eligible ChatGPT plan for
 supported answers, and sends **ntfy phone alerts** when you need to intervene.
 No paid API fallback, CAPTCHA solving, authentication bypass, or concealment.
+
+For continuous Swagbucks operation and the current unmerged branch, follow the [exact installation and setup guide](docs/swagbucks-setup.md).
 
 ## 1. Download and launch the latest version
 
@@ -43,7 +45,7 @@ while using the agent; use **Stop** in the dashboard before closing it.
 **Already downloaded an older version?** Stop its run and close its launcher first.
 Download/extract the new main ZIP into a new folder and launch it. Default dashboard
 settings, history, and Eureka login are kept outside the source folder and
-reused. Prolific and Branded each receive a separate saved browser profile. Do not
+reused. Swagbucks, Prolific, and Branded each receive a separate saved browser profile. Do not
 run the old and new copies simultaneously. If you previously set a custom
 `SURVEY_AGENT_DATA_DIR`, use the same absolute folder to retain that data.
 
@@ -77,9 +79,7 @@ and Focus/Do Not Disturb. Open the topic in ntfy to see whether a message arrive
 On Android, ntfy's instant-delivery option can help with delayed background alerts.
 Do not confirm delivery until an actual notification reaches your phone.
 
-An alert does **not** solve a CAPTCHA remotely. Open the survey browser on your
-computer, complete the CAPTCHA or login yourself, then click **Resume** in the
-dashboard. Failed delivery leaves the run stopped for local review.
+An alert does **not** solve a CAPTCHA remotely. In continuous Swagbucks mode, solve a survey CAPTCHA in the survey browser; the agent rechecks and resumes automatically. Login and ChatGPT-window verification still require **Resume** after resolution. Failed delivery leaves the run stopped for local review.
 
 ## 3. Connect ChatGPT and choose your platform
 
@@ -121,7 +121,7 @@ In **Connections & setup**:
    Use ordinary-chat mode for context available in a selected ChatGPT conversation.
    **For either ChatGPT mode, choose your platform:**
 
-4. Choose **Prolific**, **Branded Surveys**, or **Eureka**. This fills in the starting
+4. Choose **Swagbucks**, **Prolific**, **Branded Surveys**, or **Eureka**. This fills in the starting
    address and base domain. Leave **Allow the built-in survey-provider catalog** on
    for authorized third-party handoffs. It adds a bounded list of survey hosts and
    their subdomains, including Qualtrics, Cint/Samplicio, Dynata, Gorilla, Pavlovia,
@@ -133,7 +133,8 @@ In **Connections & setup**:
    field; use a hostname such as `study.example.org` or an explicit `*.example.org` rule.
 5. For Prolific, choose USD or GBP. For Branded, the minimum advertised hourly reward
    is **points per hour**, not dollars. Set the maximum study duration if desired.
-   These filters apply to Prolific/Branded; Eureka has its own ranking selector.
+   For Swagbucks, the minimum is **SB per hour**. These filters apply to
+   Swagbucks/Prolific/Branded; Eureka has its own ranking selector.
 6. Keep the browser visible for initial login. Enable **Automatically submit completed
    surveys** only if you want supported final Submit/Finish controls to run without
    another confirmation. Click **Save settings**.
@@ -147,6 +148,38 @@ If using ChatGPT-plan mode, you can also enable **Ask my dedicated ordinary Chat
 chat before alerting me** and save settings. Low-confidence answers and provider failures then get one ordinary-chat attempt before a phone
 alert. Practice mode never sends questions to either ChatGPT integration.
 
+### Swagbucks setup
+
+New installations default to **Swagbucks** and `https://www.swagbucks.com/surveys`.
+Existing saved settings are preserved; select Swagbucks in Connections & setup to switch.
+Use **Displayed reward per minute** to prioritize SB per minute, set a minimum
+**SB/hour** and maximum survey duration, then save settings. For example, 80 SB in
+5 minutes is 960 SB/hour advertised. This is a ranking estimate, not credited income.
+
+The adapter reads visible SB amounts and durations from supported survey cards or
+rows, supports comma-separated SB rewards, ignores displayed hourly rates when
+reading total reward, and excludes ambiguous rewards and shopping/game offers.
+A stable survey ID prevents repeating an attempted card within a run even if its
+link changes. Returning to the offer list resets the prior survey's answer memory.
+In continuous mode, completion, explicit screen-outs, and full surveys return to the list; no eligible offers cause a timed wait and refresh. Outside continuous mode, these outcomes stop with a specific message. Unfamiliar visible SB cards can be interpreted through ChatGPT, with observed-number checks and the same eligibility filters. Supported provider redirects, popup
+windows, and nested question frames use the existing browser flow.
+
+Check credited rewards in Swagbucks Activity. The application does not equate a
+screen-out, advertised reward, or completion page with paid SB. Swagbucks' public
+[reward guidance](https://help.swagbucks.com/hc/en-us/articles/205642094-In-what-cases-will-I-NOT-receive-SB-for-doing-surveys)
+explains reasons responses may not receive credit. No live signed-in Swagbucks
+layout has been validated; tests use local representative layouts.
+
+All ChatGPT prompt paths start with:
+
+> Select the correct answer. If there is no correct answer or not enough context, select the most appropriate answer. You must select at least one answer.
+
+Responses still use the structured answer format and confidence validation. The
+preface improves guidance; it cannot guarantee model output or supply missing
+personal context. ChatGPT-plan requests use the supported `instructions` field
+rather than a system-role input, following the
+[Sign in with ChatGPT request requirements](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
+
 ## 4. Log in and run
 
 1. Optionally use **Try local practice** first. It uses local mock pages and manual mode.
@@ -155,19 +188,19 @@ alert. Practice mode never sends questions to either ChatGPT integration.
    prerequisite. Confirmed answer mappings can still be reused. Low confidence or
    unavailable context can require your input. Stop the run before changing settings.
 
-The dashboard finishes at detected survey completion; click Start for another run.
+Enable **Keep doing Swagbucks surveys** to return to the list and continue automatically after each recognized terminal outcome. Enable **Automatically submit completed surveys** and **Automatically accept privacy policies, cookies, and survey participation consent on my behalf** for those authorized actions. Otherwise, the dashboard finishes at detected survey completion; click Start for another run.
 Discovery also works in Generic mode: start at an authorized platform homepage and
 the agent can follow visible survey/study hubs, compare offer cards in the same
 reward unit, and open start/detail links. It uses observed links rather than fixed
 platform URLs. Ambiguous hubs or unrecognized designs still stop; arbitrary websites
-are not guaranteed. Known Prolific/Branded reward and duration filters remain active.
+are not guaranteed. Known Swagbucks/Prolific/Branded reward and duration filters remain active.
 
 The current survey also keeps a separate short-term answer history. Repeated
 normalized questions reuse their earlier validated answer, and a conflicting manual
 answer to that same question is stopped. This history resets when you start a new
 run. This deterministic check covers repeated
 questions, not every possible contradiction between differently worded questions.
-Complex study instructions, consent, platform completion-code forms, unsupported
+Complex study instructions, ambiguous consent, platform completion-code forms, unsupported
 widgets, ambiguous controls, and unavailable context can require manual review. Never
 invent a completion code. Keep the computer awake and online during runs.
 
@@ -195,7 +228,7 @@ agent. Closed shadow roots, canvas/image-only questions, custom sliders/drag-and
 complex consent flows and unknown providers can still need review. New-window GETs
 are moved into the managed survey tab; flows requiring a live opener window or a
 new-window POST still need manual handling. The dashboard stops after one detected
-survey completion. No real-survey integration tests are run; browser tests use local
+survey completion unless continuous Swagbucks mode is enabled. No real-survey integration tests are run; browser tests use local
 fixtures. The **Test ChatGPT** button verifies your own connection separately.
 
 ## Updating and finding your data
@@ -232,7 +265,7 @@ dashboard settings. See [advanced commands](docs/advanced.md) if you still use t
 
 The dashboard supports recognized native radio buttons, checkboxes, dropdowns, text,
 numeric inputs, scales, labelled matrices, and conditional questions. Embedded
-survey frames and custom controls may stop. Prolific/Branded ranking compares
+survey frames and custom controls may stop. Swagbucks/Prolific/Branded ranking compares
 advertised reward per minute within one unit; actual earnings depend on eligibility,
 time, approval, and availability. Displayed rewards are not recorded as paid income.
 Live platform layouts and account eligibility remain unverified.
@@ -246,3 +279,9 @@ controls navigation; it does not grant research permission.
 Developers: `corepack pnpm check` runs formatting, lint, strict TypeScript, build,
 and local mock-browser tests. OAuth/model/ntfy calls are mocked in tests. See
 [AGENTS.md](AGENTS.md) for the repository working agreement.
+
+### Multilingual surveys
+
+Questions and answer labels stay in their original language, including mixed-language and right-to-left pages. The browser captures each question's inherited HTML `lang` hint; ChatGPT infers the language when that hint is missing. All prompt modes request original-language free text, exact option labels, unchanged JSON fields, and standard numeric values. Unknown-language navigation labels go through model classification, with separate continuation and final-submission handling. Existing confidence and submission controls still apply.
+
+Swagbucks offer parsing uses the declared locale for digits, decimal/group separators, and localized minute units. It requires recognizable offer metadata and unambiguous reward/duration values; it never guesses exchange rates. Missing or incorrect locale metadata, unsupported layouts, unclear translations, and localized terminal pages without a completion marker can still require review. Language coverage depends on the connected model; this is not a guarantee that every survey in every language can run unattended. Tests use local mock surveys only.

@@ -86,6 +86,7 @@ function fillSettings(config) {
   $("max-duration").value = config.maxDurationMinutes;
   $("start-url").value = config.startUrl;
   $("platform").value = config.platform;
+  updateRewardLabels();
   $("ranking").value = config.rankBy;
   $("domains").value = config.allowedDomains.join("\n");
   $("survey-host-catalog").checked = config.surveyHostCatalog;
@@ -93,6 +94,9 @@ function fillSettings(config) {
   $("max-steps").value = config.maxSteps;
   $("step-delay").value = config.stepDelayMs;
   $("auto-submit").checked = config.autoSubmit;
+  $("auto-consent").checked = config.autoAcceptConsent;
+  $("continuous-surveys").checked = config.continuousSurveys;
+  $("offer-poll").value = config.offerPollSeconds;
   $("headless").checked = config.headless;
   $("restart-run").checked = config.restartLastRun;
 }
@@ -345,6 +349,9 @@ $("settings-form").addEventListener("submit", async (event) => {
     maxSteps: Number($("max-steps").value),
     stepDelayMs: Number($("step-delay").value),
     autoSubmit: $("auto-submit").checked,
+    autoAcceptConsent: $("auto-consent").checked,
+    continuousSurveys: $("continuous-surveys").checked,
+    offerPollSeconds: Number($("offer-poll").value),
     headless: $("headless").checked,
     restartLastRun: $("restart-run").checked
   });
@@ -387,8 +394,19 @@ $("copy-topic").addEventListener("click", async () => {
     notify("Select the topic text and copy it manually.");
   }
 });
+function updateRewardLabels() {
+  const platform = $("platform").value;
+  const unit =
+    platform === "swagbucks" ? "SB" : platform === "branded" ? "points" : $("currency").value;
+  $("minimum-rate-label").textContent = `Minimum advertised reward (${unit}/hour)`;
+  $("currency").disabled = platform !== "prolific";
+  $("swagbucks-help").hidden = platform !== "swagbucks";
+}
+$("currency").addEventListener("change", updateRewardLabels);
 $("platform").addEventListener("change", () => {
+  updateRewardLabels();
   const presets = {
+    swagbucks: ["https://www.swagbucks.com/surveys", "swagbucks.com\nwww.swagbucks.com"],
     prolific: ["https://app.prolific.com/studies", "app.prolific.com"],
     branded: ["https://surveys.gobranded.com/", "surveys.gobranded.com"],
     eureka: ["https://eurekasurveys.com/surveys", "eurekasurveys.com"]
@@ -399,6 +417,7 @@ $("platform").addEventListener("change", () => {
     $("domains").value = preset[1];
     $("auth-domains").value = "";
     $("minimum-rate").value = "0";
+    $("ranking").value = "reward_per_minute";
   }
 });
 

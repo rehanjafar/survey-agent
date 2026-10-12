@@ -73,7 +73,8 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     dataDirectory,
     async (event) => {
       const phone = await readPhoneSetup(dataDirectory);
-      if (phone?.confirmed) await new NtfyNotifier(phone.topicUrl).notify(event);
+      if (!phone?.confirmed) return false;
+      await new NtfyNotifier(phone.topicUrl).notify(event);
     }
   );
   const token = randomBytes(32).toString("hex");

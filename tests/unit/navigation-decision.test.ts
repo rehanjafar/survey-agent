@@ -51,6 +51,7 @@ it("limits automatic navigation decisions to observed eligible labels without se
   const provider = {
     decide: vi.fn(async () => ({
       selectedOption: "1: I'm ready to proceed",
+      value: "continue",
       confidence: 0.99,
       reason: "Continue"
     }))
@@ -83,3 +84,79 @@ it.each([
     store.close();
   }
 });
+
+it.each(["Suivant", "次へ", "التالي", "अगला", "Далее", "다음"])(
+  "interprets %s without an English label allowlist",
+  async (label) => {
+    const store = new SqliteStore(":memory:");
+    try {
+      const provider = {
+        decide: vi.fn(async () => ({
+          selectedOption: `1: ${label}`,
+          value: "continue",
+          confidence: 1,
+          reason: ""
+        }))
+      };
+      expect(
+        await new AnswerDecisionEngine(store, provider).navigation({
+          ...page,
+          controls: [button(label, "#next")]
+        })
+      ).toEqual({ selector: "#next", submit: false });
+      expect(provider.decide.mock.calls.length).toBe(1);
+    } finally {
+      store.close();
+    }
+  }
+);
+it.each(["submit", undefined, "consent"])(
+  "handles localized final or ambiguous actions (%s)",
+  async (value) => {
+    const store = new SqliteStore(":memory:");
+    try {
+      const result = await new AnswerDecisionEngine(store, {
+        decide: async () => ({
+          selectedOption: "1: إرسال",
+          ...(value ? { value } : {}),
+          confidence: 1,
+          reason: ""
+        })
+      }).navigation({ ...page, controls: [button("إرسال", "#submit")] });
+      expect(result).toEqual(
+        value === "submit" ? { selector: "#submit", submit: true } : undefined
+      );
+    } finally {
+      store.close();
+    }
+  }
+);
+
+it.each(["survey_completed", "survey_screened_out", "survey_unavailable", "unknown"])(
+  "classifies terminal pages without assuming payment (%s)",
+  async (selectedOption) => {
+    const store = new SqliteStore(":memory:");
+    try {
+      const provider = {
+        decide: vi.fn(async () => ({ selectedOption, confidence: 1, reason: "" }))
+      };
+      const engine = new AnswerDecisionEngine(store, provider);
+      expect(
+        await engine.terminalOutcome({
+          ...page,
+          text: "このアンケートは終了しました",
+          controls: []
+        })
+      ).toBe(selectedOption === "unknown" ? undefined : selectedOption);
+      expect(
+        await engine.terminalOutcome({
+          ...page,
+          controls: [{ ...button("", "#answer"), kind: "text" }]
+        })
+      ).toBeUndefined();
+      expect(provider.decide).toHaveBeenCalledTimes(1);
+    } finally {
+      store.close();
+    }
+  }
+);

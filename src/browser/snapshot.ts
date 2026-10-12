@@ -122,16 +122,27 @@ export function snapshot(maxText: number): PageState {
         max = attributeNumber("max"),
         step = attributeNumber("step"),
         maxLength = attributeNumber("maxlength");
+      const offer = element.closest<HTMLElement>(
+        "[data-survey-id],[data-surveyid],.survey-row,.surveyRow,article,li,tr,[data-testid='study-card'],[data-testid='survey-card'],.study-card,.survey-card"
+      );
       return {
         kind: kind(element),
+        ...(element.closest("[lang]")?.getAttribute("lang") || document.documentElement.lang
+          ? {
+              language: (
+                element.closest("[lang]")?.getAttribute("lang") || document.documentElement.lang
+              ).slice(0, 100)
+            }
+          : {}),
         questionPrompt: question,
-        offerText:
-          element
-            .closest<HTMLElement>(
-              "article,li,[data-testid='study-card'],[data-testid='survey-card'],.study-card,.survey-card"
-            )
-            ?.innerText.trim()
-            .slice(0, 4000) ?? "",
+        offerText: offer?.innerText.trim().slice(0, 4000) ?? "",
+        ...(offer?.getAttribute("data-survey-id") || offer?.getAttribute("data-surveyid")
+          ? {
+              offerId: (
+                offer!.getAttribute("data-survey-id") || offer!.getAttribute("data-surveyid")!
+              ).slice(0, 200)
+            }
+          : {}),
         selector: selectorFor(element),
         id: element.id,
         name: element.getAttribute("name") ?? "",

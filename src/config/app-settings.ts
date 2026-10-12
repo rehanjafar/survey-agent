@@ -15,13 +15,15 @@ export function defaultDataDirectory(
 }
 export const settingsSchema = z
   .object({
-    startUrl: z.string().url().default("https://eurekasurveys.com/surveys"),
+    startUrl: z.string().url().default("https://www.swagbucks.com/surveys"),
     allowedDomains: z
       .array(z.string().refine(validateDomainRule))
       .min(1)
       .max(100)
-      .default(["eurekasurveys.com", "www.eurekasurveys.com", "localhost", "127.0.0.1"]),
-    platform: z.enum(["generic", "eureka", "prolific", "branded"]).default("eureka"),
+      .default(["swagbucks.com", "www.swagbucks.com"]),
+    platform: z
+      .enum(["generic", "eureka", "prolific", "branded", "swagbucks"])
+      .default("swagbucks"),
     surveyHostCatalog: z.boolean().default(true),
     navigationMode: z.enum(["compatible", "strict"]).default("compatible"),
     provider: z.enum(["manual", "chatgpt_plan", "chatgpt_browser"]).default("manual"),
@@ -33,6 +35,9 @@ export const settingsSchema = z
     maxDurationMinutes: z.number().positive().finite().default(60),
     headless: z.boolean().default(false),
     autoSubmit: z.boolean().default(false),
+    autoAcceptConsent: z.boolean().default(false),
+    continuousSurveys: z.boolean().default(false),
+    offerPollSeconds: z.number().int().min(15).max(3600).default(60),
     minimumConfidence: z.number().min(0.5).max(1).default(0.9),
     maxSteps: z.number().int().min(1).max(500).default(100),
     stepDelayMs: z.number().int().min(250).max(10000).default(800),

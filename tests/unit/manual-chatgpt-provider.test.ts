@@ -1,3 +1,4 @@
+import { answerPreface } from "../../src/providers/decision-schema.js";
 import { describe, expect, it, vi } from "vitest";
 import { ManualChatGPTProvider } from "../../src/providers/manual-chatgpt-provider.js";
 const question = {
@@ -14,6 +15,7 @@ describe("manual chat bridge", () => {
     const result = await new ManualChatGPTProvider(exchange).decide(question);
     expect(result.selectedOption).toBe("A");
     expect(exchange.mock.calls[0]?.[0]).toContain("untrusted survey data");
+    expect(exchange.mock.calls[0]?.[0].startsWith(answerPreface)).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });

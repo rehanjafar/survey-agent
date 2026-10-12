@@ -13,6 +13,7 @@ import { resolve } from "node:path";
 import { loadRuntimeConfig } from "../config/runtime-config.js";
 import type { PageState } from "../browser/types.js";
 import { PlaywrightChromiumBrowser } from "../browser/index.js";
+import { swagbucksOutcome } from "../platforms/swagbucks/outcome.js";
 import { EurekaSurveyPlatformAdapter } from "../platforms/eureka/index.js";
 import { ManualChatGPTProvider } from "../providers/index.js";
 import { AnswerDecisionEngine } from "../decision/answer-engine.js";
@@ -242,6 +243,7 @@ if (command === "done") {
                   new URL(state.url).origin !== new URL(startUrl).origin
               }
             : {}),
+          ...(guided?.platform === "swagbucks" ? { surveyStopReason: swagbucksOutcome } : {}),
           signal: controller.signal
         });
         console.log(JSON.stringify(result));

@@ -20,7 +20,7 @@ function destination(control: InteractiveControl, pageUrl: string): SurveyDestin
   const minutes = card.match(/\b(\d+(?:\.\d+)?)\s*(?:mins?|minutes?)\b/i)?.[1];
   const reward = card
     .replace(/[$£]\s*\d+(?:\.\d+)?\s*\/\s*(?:hr|hour|h)\b/gi, "")
-    .match(/([$£])\s*(\d+(?:\.\d{1,2})?)|\b(\d+(?:\.\d+)?)\s*(points|pts)\b/i);
+    .match(/([$£])\s*(\d+(?:\.\d{1,2})?)|\b(\d+(?:\.\d+)?)\s*(points|pts|SB)\b/i);
   const key = control.href || `${pageUrl}:${control.selector}:${label}`;
   const looksLikeStudy =
     /\b(survey|study|participate|start|take|view|begin|open)\b/i.test(label) ||
@@ -33,7 +33,7 @@ function destination(control: InteractiveControl, pageUrl: string): SurveyDestin
         selector: control.selector,
         key,
         kind: "offer",
-        unit: reward[1] || "points",
+        unit: reward[1] || (reward[4]?.toUpperCase() === "SB" ? "SB" : "points"),
         hourly: (amount * 60) / duration,
         minutes: duration
       };

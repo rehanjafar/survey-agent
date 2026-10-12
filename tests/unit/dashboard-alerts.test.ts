@@ -6,9 +6,10 @@ import { AnswerDecisionEngine } from "../../src/decision/answer-engine.js";
 import { NoCostProvider } from "../../src/providers/no-cost-provider.js";
 import type { BrowserSession, BrowserAutomationDriver } from "../../src/browser/types.js";
 
-it.each([false, true])(
-  "keeps CAPTCHA review paused when notification failure is %s",
+it.each([false, true, "unconfigured"] as const)(
+  "rechecks cleared CAPTCHA only after successful notification (failure: %s)",
   async (fails) => {
+    vi.useFakeTimers();
     const store = new SqliteStore(":memory:");
     const engine = new AnswerDecisionEngine(store, new NoCostProvider());
     const decide = vi.spyOn(engine, "decide");
@@ -17,7 +18,8 @@ it.each([false, true])(
       title: "Survey",
       text: "Verify you are human",
       controls: [],
-      hasCaptcha: true
+      hasCaptcha: true,
+      complete: false
     };
     const session = {
       navigate: async () => page,
@@ -30,7 +32,8 @@ it.each([false, true])(
       close: async () => {}
     } as unknown as BrowserAutomationDriver;
     const notify = vi.fn(async () => {
-      if (fails) throw new Error("offline");
+      if (fails === true) throw new Error("offline");
+      if (fails === "unconfigured") return false;
     });
     const runner = new SurveyRunner(
       store,
@@ -42,7 +45,8 @@ it.each([false, true])(
     try {
       await runner.start(
         settingsSchema.parse({
-          platform: "generic",
+          platform: "swagbucks",
+          continuousSurveys: true,
           allowedDomains: ["survey.test"],
           startUrl: page.url
         })
@@ -56,11 +60,20 @@ it.each([false, true])(
         reason: "captcha_detected",
         host: "survey.test"
       });
-      if (fails) expect(runner.state().run?.message).toContain("Phone alert failed");
+      if (fails === true) expect(runner.state().run?.message).toContain("Phone alert failed");
       expect(decide).not.toHaveBeenCalled();
+      page.url = "https://survey.test/done";
+      page.hasCaptcha = false;
+      page.text = "Survey complete";
+      page.complete = true;
+      await vi.advanceTimersByTimeAsync(6000);
+      await runner.idle();
+      expect(runner.state().run?.status).toBe(fails ? "review" : "completed");
+      expect(notify).toHaveBeenCalledTimes(1);
     } finally {
       await runner.stop();
       store.close();
+      vi.useRealTimers();
     }
   }
 );

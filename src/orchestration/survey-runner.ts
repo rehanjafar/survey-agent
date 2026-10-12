@@ -19,6 +19,7 @@ export interface RunnerOptions {
   readonly maxSteps: number;
   readonly reviewTimeoutMs: number;
   readonly pollMs?: number;
+  readonly surveyStopReason?: (state: PageState) => string | undefined;
   readonly surveyPageAllowed?: (state: PageState) => boolean;
   readonly signal?: AbortSignal;
   readonly wait?: (ms: number) => Promise<void>;
@@ -101,6 +102,8 @@ export async function runSurveys(options: RunnerOptions): Promise<RunnerResult> 
           if (!(await pause(reason))) return { status: "review", reason, surveys };
           state = await capture();
         }
+        const terminalReason = options.surveyStopReason?.(state);
+        if (terminalReason) return await stop(terminalReason);
         if (
           /\b(thank you for completing|survey completed|survey complete|you have been disqualified|not eligible for this survey)\b/i.test(
             state.text

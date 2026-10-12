@@ -14,6 +14,7 @@ export interface MatrixRow {
 export interface NormalizedQuestion {
   readonly fingerprint: string;
   readonly prompt: string;
+  readonly language?: string;
   readonly required: boolean;
   readonly type: QuestionType;
   readonly options: readonly SurveyOption[];
@@ -40,6 +41,9 @@ export type ReviewReason =
   | "contradiction"
   | "low_confidence"
   | "no_question_found"
+  | "no_matching_offers"
+  | "survey_screened_out"
+  | "survey_unavailable"
   | "unexpected_page"
   | "provider_error"
   | "missing_information"

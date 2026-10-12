@@ -1,3 +1,4 @@
+import { swagbucksOutcome } from "../platforms/swagbucks/outcome.js";
 import { normalizeText } from "../normalization/question-normalizer.js";
 import { ProviderError } from "../providers/provider-error.js";
 import { discoverSurveyDestination } from "../platforms/generic/discovery.js";
@@ -9,7 +10,12 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { BrowserAutomationDriver, BrowserSession, PageState } from "../browser/index.js";
+import type {
+  BrowserAutomationDriver,
+  BrowserSession,
+  PageState,
+  InteractiveControl
+} from "../browser/index.js";
 import { isAllowedUrl } from "../browser/index.js";
 import type { AppSettings } from "../config/app-settings.js";
 import { providerQuestion } from "../decision/answer-engine.js";
@@ -33,6 +39,11 @@ export interface RunnerState {
 }
 export class SurveyRunner {
   private panel: PanelSurveyAdapter | undefined;
+  private panelOfferActive = false;
+  private surveyStartSteps = 0;
+  private lastConsentCheck: string | undefined;
+  private acceptedConsents = new Set<string>();
+  private captchaTimer: ReturnType<typeof setTimeout> | undefined;
   private run: RunRecord | null = null;
   private question: NormalizedQuestion | null = null;
   private reason: string | null = null;
@@ -51,7 +62,7 @@ export class SurveyRunner {
     private readonly makeDriver: (settings: AppSettings) => BrowserAutomationDriver,
     private readonly engineFactory: (settings: AppSettings) => AnswerDecisionEngine,
     private readonly dataDirectory: string,
-    private readonly notify?: (event: ReviewNotification) => Promise<void>
+    private readonly notify?: (event: ReviewNotification) => Promise<void | boolean>
   ) {}
   public state(): RunnerState {
     return {
@@ -79,6 +90,10 @@ export class SurveyRunner {
     this.settings = { ...settings };
     this.answered.clear();
     this.explored.clear();
+    this.panelOfferActive = false;
+    this.surveyStartSteps = 0;
+    this.lastConsentCheck = undefined;
+    this.acceptedConsents.clear();
     this.surveyAnswers.clear();
     this.lastNavigation = undefined;
     this.lastPageUrl = undefined;
@@ -98,9 +113,12 @@ export class SurveyRunner {
       this.driver = this.makeDriver(settings);
       this.session = await this.driver.createSession();
       this.panel =
-        settings.platform === "prolific" || settings.platform === "branded"
+        settings.platform === "prolific" ||
+        settings.platform === "branded" ||
+        settings.platform === "swagbucks"
           ? new PanelSurveyAdapter(this.session, {
               platform: settings.platform,
+              rankBy: settings.rankBy,
               startUrl: settings.startUrl,
               allowedHosts: settings.allowedDomains,
               currency: settings.currency,
@@ -117,6 +135,7 @@ export class SurveyRunner {
     if (this.run?.status === "running") this.status("paused", "Paused. The browser remains open.");
   }
   public async stop(): Promise<void> {
+    clearTimeout(this.captchaTimer);
     if (this.run && ["running", "paused", "review"].includes(this.run.status))
       this.status("stopped", "Run stopped.");
     await this.task;
@@ -139,6 +158,7 @@ export class SurveyRunner {
       !this.settings
     )
       throw new Error("No idle paused run to resume.");
+    clearTimeout(this.captchaTimer);
     const reviewedQuestion = this.question;
     const wasSubmit = this.reason === "submission_confirmation";
     this.status("running", "Checking the current page…");
@@ -171,7 +191,8 @@ export class SurveyRunner {
         }
         await this.apply(fresh, result.action, { ...input, confidence: 1 }, "human", remember);
       } else if (wasSubmit && confirmSubmit) {
-        const next = navigation(current);
+        const next =
+          navigation(current) ?? (await this.engineFactory(this.settings!).navigation(current));
         if (!next || !next.submit) {
           await this.review("unexpected_page", "Submit control changed.");
           return;
@@ -265,38 +286,148 @@ export class SurveyRunner {
     const settings = this.settings!;
     const engine = this.engineFactory(settings);
     while (this.run?.status === "running") {
-      if (this.run.steps >= settings.maxSteps) {
+      const page = await this.session!.capturePageState();
+      this.run.url = safeUrl(page.url);
+      if (await this.guard(page)) return;
+      if (page.url !== this.lastPageUrl) {
+        this.answered.clear();
+        this.acceptedConsents.clear();
+        this.lastConsentCheck = undefined;
+        this.lastPageUrl = page.url;
+      }
+      const onOfferList = Boolean(
+        this.panel &&
+        new URL(page.url).origin === new URL(settings.startUrl).origin &&
+        new URL(page.url).pathname.replace(/\/+$/, "") ===
+          new URL(settings.startUrl).pathname.replace(/\/+$/, "")
+      );
+      if (settings.platform === "swagbucks" && !onOfferList) {
+        const outcome = swagbucksOutcome(page);
+        if (outcome) {
+          if (this.continuous() && this.panelOfferActive) {
+            await this.returnToOffers(outcome);
+            continue;
+          }
+          await this.review(
+            outcome,
+            outcome === "survey_screened_out"
+              ? "This survey screened you out. No completion or SB credit was assumed. Review the dashboard before starting another survey."
+              : "This survey is full or unavailable. Review the dashboard before starting another survey."
+          );
+          return;
+        }
+      }
+      if (page.complete && !onOfferList) {
+        if (this.continuous() && this.panelOfferActive) {
+          await this.returnToOffers("survey_completed");
+          continue;
+        }
+        this.status("completed", "Survey completion detected.");
+        return;
+      }
+      if (onOfferList && this.panelOfferActive) {
+        this.surveyAnswers.clear();
+        this.answered.clear();
+        this.lastNavigation = undefined;
+        this.panelOfferActive = false;
+        this.acceptedConsents.clear();
+        this.lastConsentCheck = undefined;
+        if (this.continuous()) this.surveyStartSteps = this.run.steps;
+      }
+      if (this.run.steps - this.surveyStartSteps >= settings.maxSteps) {
         await this.review(
           "step_limit",
           "This run reached its action limit. Stop it before starting another."
         );
         return;
       }
-      const page = await this.session!.capturePageState();
-      this.run.url = safeUrl(page.url);
-      if (await this.guard(page)) return;
-      if (page.url !== this.lastPageUrl) {
-        this.answered.clear();
-        this.lastPageUrl = page.url;
-      }
-      if (page.complete) {
-        this.status("completed", "Survey completion detected.");
-        return;
+      if (settings.autoAcceptConsent) {
+        const signature =
+          pageSignature(page) +
+          JSON.stringify(page.controls.map((control) => [control.selector, control.checked]));
+        if (signature !== this.lastConsentCheck) {
+          const consent = await engine.consent(page);
+          if (this.run.status !== "running") return;
+          this.lastConsentCheck = signature;
+          if (consent) {
+            if (consent.kind === "button") await this.navigateNext(page, consent.selector);
+            else {
+              const fresh = await this.session!.capturePageState();
+              if (await this.guard(fresh)) return;
+              const control = fresh.controls.find(
+                (item) =>
+                  item.selector === consent.selector &&
+                  item.kind === "checkbox" &&
+                  !item.disabled &&
+                  !item.checked
+              );
+              if (!control || pageSignature(fresh) !== pageSignature(page)) {
+                await this.review("unexpected_page", "Consent page changed before acceptance.");
+                return;
+              }
+              await executeAction(this.session!, {
+                kind: "set_many",
+                selections: [{ selector: consent.selector, checked: true }]
+              });
+              this.acceptedConsents.add(consentBinding(control));
+              this.run.steps++;
+              this.readWaitStarted = undefined;
+              audit(this.store, "consent_accepted", { runId: this.run.id });
+              this.persist();
+            }
+            continue;
+          }
+        }
       }
       if (
         this.panel &&
         new URL(page.url).origin === new URL(settings.startUrl).origin &&
-        new URL(page.url).pathname === new URL(settings.startUrl).pathname
+        new URL(page.url).pathname.replace(/\/+$/, "") ===
+          new URL(settings.startUrl).pathname.replace(/\/+$/, "")
       ) {
         const discovered = await this.panel.discoverOffers();
         if (discovered.status === "ready") {
+          this.panel.markAttempted(discovered.offers[0]!.key);
+          this.panelOfferActive = true;
           await this.navigateNext(page, discovered.offers[0]!.selector);
           continue;
+        }
+        if (settings.platform === "swagbucks") {
+          if (await this.waitForPage()) continue;
+          const interpreted = await engine.surveyOffer(page, this.panel, settings);
+          if (this.run.status !== "running") return;
+          if (interpreted) {
+            this.panel.markAttempted(interpreted.key);
+            this.panelOfferActive = true;
+            await this.navigateNext(page, interpreted.selector);
+            continue;
+          }
+          if (this.continuous()) {
+            this.status(
+              "running",
+              `Waiting for new eligible surveys; checking again in ${settings.offerPollSeconds} seconds…`
+            );
+            if (!(await this.waitWhileRunning(settings.offerPollSeconds * 1000))) return;
+            await this.session!.navigate(settings.startUrl);
+            this.lastNavigation = undefined;
+            this.readWaitStarted = undefined;
+            continue;
+          }
+          await this.review(
+            "no_matching_offers",
+            "No unattempted Swagbucks surveys match your SB/hour and duration filters. Check the offers or adjust your settings."
+          );
+          return;
         }
       }
       let questions: NormalizedQuestion[];
       try {
-        questions = extractQuestions(page);
+        questions = extractQuestions({
+          ...page,
+          controls: page.controls.filter(
+            (control) => !this.acceptedConsents.has(consentBinding(control))
+          )
+        });
       } catch {
         if (await this.waitForPage()) continue;
         await this.review(
@@ -341,11 +472,13 @@ export class SurveyRunner {
         this.panel
           ? {
               unit:
-                settings.platform === "branded"
-                  ? "points"
-                  : settings.currency === "GBP"
-                    ? "£"
-                    : "$",
+                settings.platform === "swagbucks"
+                  ? "SB"
+                  : settings.platform === "branded"
+                    ? "points"
+                    : settings.currency === "GBP"
+                      ? "£"
+                      : "$",
               minimumHourlyReward: settings.minimumHourlyReward,
               maxDurationMinutes: settings.maxDurationMinutes
             }
@@ -392,12 +525,38 @@ export class SurveyRunner {
         }
       }
       if (await this.waitForPage()) continue;
+      if (this.continuous() && this.panelOfferActive) {
+        const outcome = await engine.terminalOutcome(page);
+        if (this.run.status !== "running") return;
+        if (outcome) {
+          await this.returnToOffers(outcome);
+          continue;
+        }
+      }
       await this.review(
         "no_question_found",
         "No supported question, continuation button or survey offer was found."
       );
       return;
     }
+  }
+  private continuous(): boolean {
+    return this.settings?.platform === "swagbucks" && this.settings.continuousSurveys;
+  }
+  private async waitWhileRunning(milliseconds: number): Promise<boolean> {
+    const end = Date.now() + milliseconds;
+    while (this.run?.status === "running" && Date.now() < end)
+      await delay(Math.min(250, end - Date.now()));
+    return this.run?.status === "running";
+  }
+  private async returnToOffers(outcome: string): Promise<void> {
+    audit(this.store, "survey_finished", { runId: this.run!.id, reason: outcome });
+    this.status("running", "Returning to Swagbucks to choose the next survey…");
+    if (!(await this.waitWhileRunning(this.settings!.stepDelayMs))) return;
+    await this.session!.navigate(this.settings!.startUrl);
+    this.readWaitStarted = undefined;
+    this.lastNavigation = undefined;
+    this.question = null;
   }
   private async waitForPage(): Promise<boolean> {
     this.readWaitStarted ??= Date.now();
@@ -531,15 +690,17 @@ export class SurveyRunner {
     this.reason = reason;
     this.status("review", message);
     this.store.recordReview(reason, message);
+    let delivered = false;
     if (this.notify && this.session) {
       try {
-        await this.notify({
+        const result = await this.notify({
           reason,
           host:
             reviewHost ??
             this.session.pendingNavigation?.()?.hostname ??
             new URL(this.session.currentUrl()).hostname
         });
+        delivered = result !== false;
       } catch {
         this.status(
           "review",
@@ -547,6 +708,8 @@ export class SurveyRunner {
         );
       }
     }
+    if (reason === "captcha_detected" && delivered && this.continuous() && !reviewHost)
+      this.watchCaptcha();
     audit(this.store, "review_required", { runId: this.run.id, reason });
     if (this.session?.screenshot) {
       const directory = join(this.dataDirectory, "screenshots");
@@ -563,6 +726,38 @@ export class SurveyRunner {
         audit(this.store, "screenshot_unavailable", { runId: this.run.id });
       }
     }
+  }
+  /** Read-only polling after an alert; CAPTCHA controls are never operated by the agent. */
+  private watchCaptcha(clearChecks = 0): void {
+    clearTimeout(this.captchaTimer);
+    this.captchaTimer = setTimeout(() => {
+      void (async () => {
+        if (this.run?.status !== "review" || this.reason !== "captcha_detected" || !this.session)
+          return;
+        if (this.task) {
+          this.watchCaptcha(clearChecks);
+          return;
+        }
+        const page = await this.session.capturePageState();
+        if (this.run?.status !== "review" || this.reason !== "captcha_detected") return;
+        if (pageStopReason(page) === "captcha_detected") {
+          this.watchCaptcha(0);
+          return;
+        }
+        if (clearChecks < 1) {
+          this.watchCaptcha(clearChecks + 1);
+          return;
+        }
+        await this.resume();
+      })().catch(() => {
+        if (this.run?.status === "review")
+          this.status(
+            "review",
+            "Could not recheck verification. Inspect the browser and Resume manually."
+          );
+      });
+    }, 2000);
+    this.captchaTimer.unref();
   }
   private status(status: RunRecord["status"], message: string): void {
     if (this.run) {
@@ -583,6 +778,9 @@ export class SurveyRunner {
     await this.driver?.close().catch(() => undefined);
     this.driver = undefined;
   }
+}
+function consentBinding(control: InteractiveControl): string {
+  return JSON.stringify([control.selector, control.label, control.question]);
 }
 function safeUrl(value: string) {
   const url = new URL(value);

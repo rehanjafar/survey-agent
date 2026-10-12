@@ -106,3 +106,21 @@ it("rejects corrupted settings, unsafe hosts and mismatched start URLs", async (
   await saveSettings(path, settings);
   expect(await readSettings(path)).toEqual(settings);
 });
+
+it("supports Swagbucks setup with its own persistent browser session", async () => {
+  const path = await directory();
+  const value = settingsSchema.parse({
+    platform: "swagbucks",
+    startUrl: "https://www.swagbucks.com/surveys",
+    model: "model"
+  });
+  await saveSettings(path, value);
+  expect((await readSettings(path))?.platform).toBe("swagbucks");
+  const config = loadRuntimeConfig(settingsEnvironment(value, path));
+  expect(config.profileDirectory).toBe(join(path, "profiles", "swagbucks"));
+  expect(config.allowedDomains).toEqual(["swagbucks.com", "www.swagbucks.com"]);
+  expect(
+    settingsSchema.safeParse({ ...value, startUrl: "https://swagbucks.com.evil.test/surveys" })
+      .success
+  ).toBe(false);
+});

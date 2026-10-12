@@ -127,6 +127,8 @@ describe("local dashboard and autonomous survey loop", () => {
       expect(
         await page.getByRole("button", { name: "Clear reusable answer mappings" }).isVisible()
       ).toBe(true);
+      expect(await page.locator("#auto-consent").isVisible()).toBe(true);
+      expect(await page.locator("#continuous-surveys").isVisible()).toBe(true);
       await page.getByRole("button", { name: "Overview", exact: false }).click();
       await page.screenshot({
         path: join(tmpdir(), "survey-agent-dashboard-desktop.png"),
