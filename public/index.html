@@ -321,9 +321,56 @@
           ><button id="phone-confirm" disabled>I received it</button>
           <p id="phone-status">Not configured</p>
           <p class="hint">
-            Keep the random topic private. No SMS setup is needed. Solve CAPTCHA alerts yourself in
-            the survey browser, then click Resume. Missing alerts: check notification permissions,
+            Keep the random topic private. No SMS setup is needed. CAPTCHA alerts include an Open
+            laptop link; set up remote access below. Missing alerts: check notification permissions,
             Focus/Do Not Disturb, and the exact topic.
+          </p>
+        </article>
+        <article class="card">
+          <h2>Solve CAPTCHAs from your phone</h2>
+          <ol>
+            <li>
+              On this laptop, open
+              <a
+                href="https://remotedesktop.google.com/access"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Chrome Remote Desktop</a
+              >. Choose <b>Set up Remote Access</b>, install its host, name the laptop, and create a
+              PIN. Complete any requested macOS screen-recording and accessibility permissions.
+            </li>
+            <li>
+              On your phone, open the same page and sign in with the same Google account. Select
+              your laptop and enter its PIN. On iPhone, you can add the page to your Home Screen; on
+              Android, you can also use the Chrome Remote Desktop app.
+            </li>
+            <li>
+              Send the test alert below. Turn off phone Wi-Fi, tap <b>Open laptop</b> (or the
+              notification itself), and verify you can control the laptop.
+            </li>
+          </ol>
+          <button id="remote-desktop-test" class="secondary" disabled>
+            Send Open laptop test alert
+          </button>
+          <p>
+            CAPTCHA and login alerts automatically include this shortcut. It opens your computer
+            list; Google sign-in and your remote-access PIN still protect the connection. Do not
+            enter that PIN in Survey Agent.
+          </p>
+          <p>
+            You solve the CAPTCHA yourself in the existing browser. Survey CAPTCHA checks resume
+            automatically in continuous mode once clear. For ChatGPT CAPTCHAs or login, also click
+            <b>Resume</b> on the laptop dashboard through remote access.
+          </p>
+          <p class="hint">
+            Keep the laptop awake and online. This needs its one-time remote-access installation;
+            the shortcut alone does not enable remote control.
+            <a
+              href="https://support.google.com/chrome/answer/1649523?hl=en"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Google's setup instructions</a
+            >
           </p>
         </article>
         <article class="card">

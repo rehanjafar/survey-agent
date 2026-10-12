@@ -169,6 +169,7 @@ async function refresh() {
     (state.phoneAnswers?.ready
       ? "Reply service ready — test from your phone with Tailscale connected."
       : "Save your Tailscale address to enable phone answers.");
+  $("remote-desktop-test").disabled = !state.phone?.confirmed;
   const phone = state.phone;
   $("phone-server").textContent = phone ? new URL(phone.topicUrl).origin : "—";
   $("phone-topic").textContent = phone ? new URL(phone.topicUrl).pathname.slice(1) : "—";
@@ -445,3 +446,5 @@ $("phone-answer-setup").addEventListener("submit", (event) => {
   void post("phone/answers", { url: $("phone-answer-url").value });
 });
 $("phone-answer-test").addEventListener("click", () => post("phone/answers/test"));
+
+$("remote-desktop-test").addEventListener("click", () => post("phone/remote/test"));

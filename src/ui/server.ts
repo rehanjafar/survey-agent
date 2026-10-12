@@ -263,6 +263,15 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           await savePhoneSetup(dataDirectory, { ...phone, tested: true });
           break;
         }
+        case "/api/phone/remote/test": {
+          const phone = await readPhoneSetup(dataDirectory);
+          if (!phone?.confirmed) throw new Error("Confirm your ntfy alerts first.");
+          await new NtfyNotifier(phone.topicUrl).notify({
+            reason: "remote_desktop_test",
+            host: "local-agent"
+          });
+          break;
+        }
         case "/api/phone/answers": {
           const { url } = z
             .object({ url: z.string().max(500) })
