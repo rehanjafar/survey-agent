@@ -1,3 +1,5 @@
+import { ChatGPTBrowserProvider } from "../providers/chatgpt-browser-provider.js";
+import { ProviderError } from "../providers/provider-error.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ChatGPTAuth } from "../auth/chatgpt-auth.js";
@@ -34,8 +36,16 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
   }
   const store = new SqliteStore(join(dataDirectory, "agent.sqlite"));
   store.recoverRuns();
+  const regularChat = new ChatGPTBrowserProvider(dataDirectory, () =>
+    store
+      .facts()
+      .filter((fact) => fact.established && fact.kind !== "temporary")
+      .map(({ key, value }) => ({ key, value }))
+  );
   const auth = new ChatGPTAuth(dataDirectory);
-  let authStatus = "Not connected";
+  let authStatus = (await auth.credentials())
+    ? "Saved ChatGPT connection — use Test ChatGPT to verify"
+    : "Not connected";
   let models: readonly string[] = [];
   let signingIn: Promise<void> | undefined;
   let signInUrl: string | undefined;
@@ -55,8 +65,15 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     (config) =>
       new AnswerDecisionEngine(
         store,
-        config.provider === "chatgpt_plan" ? plan(config.chatgptModel) : new NoCostProvider(),
-        config.minimumConfidence
+        config.provider === "chatgpt_browser"
+          ? regularChat
+          : config.provider === "chatgpt_plan"
+            ? plan(config.chatgptModel)
+            : new NoCostProvider(),
+        config.minimumConfidence,
+        config.regularChatFallback && config.provider !== "chatgpt_browser"
+          ? regularChat
+          : undefined
       ),
     dataDirectory,
     async (event) => {
@@ -133,7 +150,8 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
         runs: store.runs(),
         events: store.events(),
         stats: store.stats(),
-        noCost: settings.provider === "manual",
+        noCost: settings.provider === "manual" && !settings.regularChatFallback,
+        regularChat: regularChat.status(),
         chatgpt: { status: authStatus, models, signingIn: Boolean(signingIn), signInUrl },
         phone: (await readPhoneSetup(dataDirectory)) ?? null,
         dataDirectory,
@@ -153,6 +171,9 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     try {
       const body = await readJson(request);
       switch (pathname) {
+        case "/api/chatgpt/browser/open":
+          await regularChat.open();
+          break;
         case "/api/chatgpt/login": {
           if (signingIn) throw new Error("Sign-in is already open in your browser.");
           authStatus = "Waiting for browser sign-in";
@@ -187,6 +208,36 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           models = await plan().models();
           authStatus = "Connected";
           break;
+        case "/api/chatgpt/test": {
+          const input = z
+            .object({ model: z.string().trim().min(1).max(200) })
+            .strict()
+            .parse(body);
+          authStatus = "Testing a small automatic ChatGPT request…";
+          try {
+            models = await plan().models();
+            if (!models.includes(input.model))
+              throw new ProviderError("Select an available model from Refresh available models.");
+            const answer = await plan(input.model).decide({
+              question: "What is 2 + 2?",
+              type: "single_choice",
+              options: ["4", "5"],
+              relevantProfileFacts: []
+            });
+            if (answer.selectedOption !== "4" || answer.confidence < 0.9)
+              throw new ProviderError(
+                "ChatGPT connected but did not return the expected structured answer. Try another available model."
+              );
+            authStatus =
+              "Verified: ChatGPT returned an automatic answer. Save Automatic mode and your model below.";
+          } catch (error) {
+            authStatus =
+              error instanceof ProviderError
+                ? error.message
+                : "ChatGPT test failed. Reconnect ChatGPT, refresh available models, and retry. No paid fallback was attempted.";
+          }
+          break;
+        }
         case "/api/phone/setup":
           await ensurePhoneSetup(dataDirectory);
           break;
@@ -260,12 +311,14 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           break;
         }
         case "/api/start":
-          if (settings.provider === "chatgpt_plan") {
+          if (settings.provider !== "manual" || settings.regularChatFallback) {
             const phone = await readPhoneSetup(dataDirectory);
             if (!phone?.confirmed)
               throw new Error(
                 "Set up phone alerts, send a test, and click I received it before automatic runs."
               );
+          }
+          if (settings.provider === "chatgpt_plan") {
             if (!settings.chatgptModel || !(await plan().models()).includes(settings.chatgptModel))
               throw new Error(
                 "Connect ChatGPT, choose an available model, and save settings first."
@@ -279,6 +332,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
             startUrl: origin + "/mock/eureka",
             platform: "eureka",
             provider: "manual",
+            regularChatFallback: false,
             allowedDomains: ["127.0.0.1"],
             headless: true
           });
@@ -288,6 +342,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           break;
         case "/api/stop":
           await runner.stop();
+          await regularChat.close();
           break;
         case "/api/resume": {
           const data = z
@@ -363,6 +418,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     },
     async close() {
       await runner.stop();
+      await regularChat.close();
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
         server.closeIdleConnections();

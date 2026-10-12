@@ -41,8 +41,11 @@ export function isVerificationFrame(value: string): boolean {
       url.protocol === "https:" &&
       !url.username &&
       !url.password &&
-      ["www.google.com", "www.recaptcha.net"].includes(url.hostname) &&
-      url.pathname.startsWith("/recaptcha/")
+      ((["www.google.com", "www.recaptcha.net"].includes(url.hostname) &&
+        url.pathname.startsWith("/recaptcha/")) ||
+        url.hostname === "challenges.cloudflare.com" ||
+        url.hostname === "hcaptcha.com" ||
+        url.hostname.endsWith(".hcaptcha.com"))
     );
   } catch {
     return false;

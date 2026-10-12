@@ -51,4 +51,5 @@ export interface ReviewRequired {
   readonly status: "review";
   readonly reason: ReviewReason;
   readonly detail: string;
+  readonly reviewHost?: string;
 }

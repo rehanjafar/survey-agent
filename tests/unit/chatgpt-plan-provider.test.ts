@@ -80,7 +80,7 @@ describe("ChatGPT plan provider", () => {
         options: [],
         relevantProfileFacts: []
       })
-    ).rejects.toThrow("no paid fallback");
+    ).rejects.toThrow(/no paid fallback/i);
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

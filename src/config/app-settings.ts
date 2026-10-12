@@ -22,8 +22,10 @@ export const settingsSchema = z
       .max(100)
       .default(["eurekasurveys.com", "www.eurekasurveys.com", "localhost", "127.0.0.1"]),
     platform: z.enum(["generic", "eureka", "prolific", "branded"]).default("eureka"),
+    surveyHostCatalog: z.boolean().default(true),
     navigationMode: z.enum(["compatible", "strict"]).default("compatible"),
-    provider: z.enum(["manual", "chatgpt_plan"]).default("manual"),
+    provider: z.enum(["manual", "chatgpt_plan", "chatgpt_browser"]).default("manual"),
+    regularChatFallback: z.boolean().default(false),
     chatgptModel: z.string().default(""),
     authDomains: z.array(z.string().refine(validateDomainRule)).default([]),
     currency: z.enum(["USD", "GBP"]).default("USD"),

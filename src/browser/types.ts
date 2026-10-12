@@ -43,6 +43,8 @@ export interface PageState {
   readonly title: string;
   readonly text: string;
   readonly controls: readonly InteractiveControl[];
+  readonly documentUrls?: readonly string[];
+  readonly frames?: readonly { selector: string }[];
   readonly hasCaptcha?: boolean;
   readonly captchaDetected?: boolean;
   readonly captchaResponsePresent?: boolean;

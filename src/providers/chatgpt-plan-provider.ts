@@ -1,3 +1,4 @@
+import { ProviderError, providerHttpError } from "./provider-error.js";
 import { z } from "zod";
 import type { LlmProvider, ProviderDecision, ProviderQuestion } from "./types.js";
 import { parseDecision, instructions } from "./decision-schema.js";
@@ -35,7 +36,7 @@ export async function completedStreamText(body: ReadableStream<Uint8Array>): Pro
           event.type === "error" ||
           event.type === "response.incomplete"
         )
-          throw new Error(
+          throw new ProviderError(
             "ChatGPT plan request failed or reached its usage limit. Review ChatGPT Settings > Usage; no paid fallback was attempted."
           );
         if (event.type === "response.output_text.delta") text += event.delta ?? "";
@@ -67,7 +68,7 @@ export class ChatGPTPlanProvider implements LlmProvider {
       redirect: "error",
       signal: AbortSignal.timeout(20_000)
     });
-    if (!response.ok) throw new Error(`ChatGPT model list failed (HTTP ${response.status}).`);
+    if (!response.ok) throw providerHttpError(response.status);
     const catalog = z
       .object({ models: z.array(z.object({ slug: z.string(), visibility: z.string() })) })
       .parse(await response.json());
@@ -95,10 +96,7 @@ export class ChatGPTPlanProvider implements LlmProvider {
         ]
       })
     });
-    if (!response.ok || !response.body)
-      throw new Error(
-        `ChatGPT plan request failed (HTTP ${response.status}); no paid fallback attempted.`
-      );
+    if (!response.ok || !response.body) throw providerHttpError(response.status);
     return parseDecision(JSON.parse(await completedStreamText(response.body))) as ProviderDecision;
   }
 }

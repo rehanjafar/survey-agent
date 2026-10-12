@@ -323,10 +323,29 @@
           </p>
           <button id="connect-chatgpt">Connect ChatGPT</button
           ><button id="refresh-models" class="secondary">Refresh available models</button>
+          <button id="test-chatgpt" class="secondary">Test ChatGPT</button>
+          <p class="hint">
+            After selecting a model below, test one small automatic request using your ChatGPT
+            allowance.
+          </p>
           <p id="chatgpt-status">Not connected</p>
           <a id="chatgpt-signin" hidden target="_blank" rel="noreferrer"
             >Open the ChatGPT sign-in page</a
           >
+        </article>
+        <article class="card">
+          <h2>Ordinary ChatGPT fallback</h2>
+          <p>
+            A dedicated normal chat can consult your confirmed profile before the agent alerts you.
+            Its browser session is separate from your survey login and ChatGPT plan connection.
+          </p>
+          <button id="open-regular-chat">Open ordinary ChatGPT</button>
+          <p id="regular-chat-status">Not opened</p>
+          <p>
+            Sign in manually in that window once. The agent sends your confirmed profile and active
+            question to this dedicated chat; it does not overwrite an unsent draft or use an
+            unrelated conversation.
+          </p>
         </article>
         <article class="card">
           <h2>2. Phone alerts with ntfy</h2>
@@ -360,6 +379,7 @@
           <label for="answer-provider">Answering mode</label
           ><select id="answer-provider">
             <option value="manual">Saved facts and manual review</option>
+            <option value="chatgpt_browser">Automatic — ordinary ChatGPT chat</option>
             <option value="chatgpt_plan">Automatic — ChatGPT plan</option></select
           ><label for="chatgpt-model">ChatGPT model (choose after connecting)</label
           ><input id="chatgpt-model" list="chatgpt-models" /><datalist
@@ -392,6 +412,10 @@
             Add a third-party survey provider only after you recognize it. New top-level redirects
             can also be approved for the current run without restarting.
           </p>
+          <label
+            ><input id="regular-chat-fallback" type="checkbox" /> Ask my dedicated ordinary ChatGPT
+            chat before alerting me about an unresolved answer</label
+          >
           <label for="auth-domains">Login-only domains, one per line (optional)</label
           ><textarea id="auth-domains" rows="2"></textarea>
           <div class="form-grid">
@@ -412,6 +436,14 @@
               ><input id="max-duration" type="number" min="1" />
             </div>
           </div>
+          <label
+            ><input id="survey-host-catalog" type="checkbox" /> Allow the built-in survey-provider
+            catalog (Qualtrics, Cint, Dynata, Gorilla and other supported hosts)</label
+          >
+          <p class="hint">
+            Applies to Eureka, Prolific and Branded. Unknown hosts still pause for review. Disable
+            this to use only your own domain list.
+          </p>
           <label for="navigation-mode">Browser compatibility</label>
           <select id="navigation-mode">
             <option value="compatible">

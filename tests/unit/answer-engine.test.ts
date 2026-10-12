@@ -40,7 +40,8 @@ describe("AnswerDecisionEngine", () => {
     expect(result).toEqual({
       status: "action",
       source: "cache",
-      action: { kind: "select_one", selector: "#blue" }
+      action: { kind: "select_one", selector: "#blue" },
+      answer: { selectedOption: "Blue", confidence: 0.99, reason: "Previously confirmed answer." }
     });
     expect(provider.decide).not.toHaveBeenCalled();
     database.close();
@@ -84,6 +85,105 @@ describe("AnswerDecisionEngine", () => {
     database.close();
   });
 
+  it("asks the provider about objective questions even with an empty profile", async () => {
+    const database = store();
+    const provider = {
+      decide: vi.fn(async () => ({
+        selectedOption: "Blue",
+        confidence: 0.99,
+        reason: "Objective answer"
+      }))
+    };
+    const result = await new AnswerDecisionEngine(database, provider).decide({
+      ...question,
+      prompt: "Which color is the clear daytime sky?"
+    });
+    expect(result.status).toBe("action");
+    expect(provider.decide).toHaveBeenCalledWith(
+      expect.objectContaining({ relevantProfileFacts: [] })
+    );
+    database.close();
+  });
+  it("does not ask a provider to invent a missing bound personal fact", async () => {
+    const database = store();
+    const provider = { decide: vi.fn() };
+    expect(
+      await new AnswerDecisionEngine(database, provider).decide({
+        ...question,
+        factKey: "preferred_color"
+      })
+    ).toMatchObject({ status: "review", reason: "missing_information" });
+    expect(provider.decide).not.toHaveBeenCalled();
+    database.close();
+  });
+  it("consults a confirmed-profile fallback before asking the user for missing facts", async () => {
+    const database = store();
+    const primary = { decide: vi.fn() };
+    const fallback = {
+      canRetrieveConfirmedFacts: true,
+      decide: vi.fn(async () => ({
+        selectedOption: "Blue",
+        confidence: 1,
+        reason: "Confirmed preference from dedicated chat"
+      }))
+    };
+    expect(
+      await new AnswerDecisionEngine(database, primary, 0.9, fallback).decide({
+        ...question,
+        factKey: "preferred_color"
+      })
+    ).toMatchObject({ status: "action", action: { selector: "#blue" } });
+    expect(primary.decide).not.toHaveBeenCalled();
+    expect(fallback.decide).toHaveBeenCalledOnce();
+    database.close();
+  });
+  it("never retries a failed dispatched fallback", async () => {
+    const database = store();
+    const fallback = {
+      decide: vi.fn(async () => {
+        throw new Error("already sent");
+      })
+    };
+    const primary = { decide: vi.fn(async () => ({ confidence: 0, reason: "Unknown" })) };
+    expect(
+      (
+        await new AnswerDecisionEngine(database, primary, 0.9, fallback).decide({
+          ...question,
+          prompt: "Which sky color?"
+        })
+      ).status
+    ).toBe("review");
+    expect(fallback.decide).toHaveBeenCalledOnce();
+    database.close();
+  });
+  it("maps a confirmed numeric fact into a truthful response band without a model", async () => {
+    const database = store();
+    database.upsertFact({ key: "age", value: "30", kind: "stable", established: true });
+    const provider = { decide: vi.fn() };
+    const q = {
+      ...question,
+      factKey: "age",
+      prompt: "How old are you?",
+      options: [
+        { id: "young", label: "18–24 years old", selector: "#young" },
+        { id: "adult", label: "25–34 years old", selector: "#adult" }
+      ]
+    };
+    expect(await new AnswerDecisionEngine(database, provider).decide(q)).toMatchObject({
+      status: "action",
+      source: "profile",
+      action: { selector: "#adult" }
+    });
+    expect(provider.decide).not.toHaveBeenCalled();
+    expect(
+      new AnswerDecisionEngine(database, provider).human(q, {
+        selectedOption: "18–24 years old",
+        confidence: 1,
+        reason: ""
+      })
+    ).toMatchObject({ status: "review", reason: "contradiction" });
+    database.close();
+  });
   it("does not cache an unrecognized or unsupported answer", async () => {
     const database = store();
     const primary: LlmProvider = {

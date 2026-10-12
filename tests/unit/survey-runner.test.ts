@@ -197,3 +197,15 @@ it("reports the blocked destination hostname in the phone alert", async () => {
     host: "unknown-study.test"
   });
 });
+
+it("does not mistake a footer sign-in link for an authentication challenge", () => {
+  expect(
+    pageStopReason({
+      ...state,
+      text: "Which answer is correct?\nA\nNext\nAlready a member? Sign in"
+    })
+  ).toBeUndefined();
+  expect(pageStopReason({ ...state, title: "Sign in | Survey", text: "Email address" })).toBe(
+    "authentication_required"
+  );
+});

@@ -79,6 +79,7 @@ function list(id, items) {
 }
 function fillSettings(config) {
   $("answer-provider").value = config.provider;
+  $("regular-chat-fallback").checked = config.regularChatFallback;
   $("chatgpt-model").value = config.chatgptModel;
   $("auth-domains").value = config.authDomains.join("\n");
   $("currency").value = config.currency;
@@ -88,6 +89,7 @@ function fillSettings(config) {
   $("platform").value = config.platform;
   $("ranking").value = config.rankBy;
   $("domains").value = config.allowedDomains.join("\n");
+  $("survey-host-catalog").checked = config.surveyHostCatalog;
   $("navigation-mode").value = config.navigationMode;
   $("max-steps").value = config.maxSteps;
   $("step-delay").value = config.stepDelayMs;
@@ -168,6 +170,8 @@ async function refresh() {
     "events-list",
     state.events.map((entry) => item(pretty(entry.event), entry.detail, entry.created_at))
   );
+  $("regular-chat-status").textContent = state.regularChat.status;
+  $("open-regular-chat").disabled = state.regularChat.busy;
   $("chatgpt-status").textContent = state.chatgpt.status;
   $("connect-chatgpt").disabled = state.chatgpt.signingIn;
   $("chatgpt-signin").hidden = !state.chatgpt.signInUrl;
@@ -379,6 +383,7 @@ $("settings-form").addEventListener("submit", async (event) => {
   await post("settings", {
     ...state.settings,
     provider: $("answer-provider").value,
+    regularChatFallback: $("regular-chat-fallback").checked,
     chatgptModel: $("chatgpt-model").value.trim(),
     authDomains: $("auth-domains")
       .value.split(/[\s,]+/)
@@ -390,6 +395,7 @@ $("settings-form").addEventListener("submit", async (event) => {
     startUrl: $("start-url").value,
     platform: $("platform").value,
     navigationMode: $("navigation-mode").value,
+    surveyHostCatalog: $("survey-host-catalog").checked,
     rankBy: $("ranking").value,
     allowedDomains: $("domains")
       .value.split(/[\s,]+/)
@@ -423,6 +429,9 @@ if (window.location.protocol === "file:") {
 } else void poll();
 
 $("connect-chatgpt").addEventListener("click", () => post("chatgpt/login"));
+$("test-chatgpt").addEventListener("click", () =>
+  post("chatgpt/test", { model: $("chatgpt-model").value.trim() })
+);
 $("refresh-models").addEventListener("click", () => post("chatgpt/models"));
 $("phone-setup").addEventListener("click", () => post("phone/setup"));
 $("phone-test").addEventListener("click", () => post("phone/test"));
@@ -451,3 +460,5 @@ $("platform").addEventListener("change", () => {
     $("minimum-rate").value = "0";
   }
 });
+
+$("open-regular-chat").addEventListener("click", () => post("chatgpt/browser/open"));

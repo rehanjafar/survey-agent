@@ -1,3 +1,7 @@
+import { normalizeText } from "../normalization/question-normalizer.js";
+import { ProviderError } from "../providers/provider-error.js";
+import { discoverSurveyDestination } from "../platforms/generic/discovery.js";
+import { effectiveSurveyDomains } from "../config/survey-hosts.js";
 import type { ReviewNotification } from "../notifications/ntfy-notifier.js";
 import { PanelSurveyAdapter } from "../platforms/panels/panel-adapter.js";
 import { pageStopReason } from "../validation/page-safety.js";
@@ -37,8 +41,11 @@ export class SurveyRunner {
   private settings: AppSettings | undefined;
   private task: Promise<void> | undefined;
   private answered = new Set<string>();
+  private explored = new Set<string>();
+  private surveyAnswers = new Map<string, ProviderDecision>();
   private lastNavigation: string | undefined;
   private lastPageUrl: string | undefined;
+  private readWaitStarted: number | undefined;
   public constructor(
     private readonly store: SqliteStore,
     private readonly makeDriver: (settings: AppSettings) => BrowserAutomationDriver,
@@ -57,6 +64,7 @@ export class SurveyRunner {
     };
   }
   public async start(settings: AppSettings): Promise<void> {
+    settings = { ...settings, allowedDomains: effectiveSurveyDomains(settings) };
     if (this.task || (this.run && ["running", "paused", "review"].includes(this.run.status)))
       throw new Error("Stop the current run first.");
     if (
@@ -70,8 +78,11 @@ export class SurveyRunner {
     await this.closeBrowser();
     this.settings = { ...settings };
     this.answered.clear();
+    this.explored.clear();
+    this.surveyAnswers.clear();
     this.lastNavigation = undefined;
     this.lastPageUrl = undefined;
+    this.readWaitStarted = undefined;
     this.question = null;
     this.reason = null;
     this.run = {
@@ -143,6 +154,14 @@ export class SurveyRunner {
         );
         if (!fresh) {
           await this.review("unexpected_page", "The page changed. Inspect it before resuming.");
+          return;
+        }
+        const prior = this.surveyAnswers.get(surveyQuestionKey(fresh));
+        if (prior && answerMeaning(prior) !== answerMeaning(input)) {
+          await this.review(
+            "contradiction",
+            "This differs from your earlier answer to the same question in this survey. Inspect the survey before proceeding."
+          );
           return;
         }
         const result = this.engineFactory(this.settings!).human(fresh, input);
@@ -225,7 +244,11 @@ export class SurveyRunner {
   }
   private launchTask(work: () => Promise<void>): void {
     this.task = work()
-      .catch(async () => {
+      .catch(async (error: unknown) => {
+        if (this.run?.status === "running" && error instanceof ProviderError) {
+          await this.review(error.reviewReason, error.message, error.reviewHost);
+          return;
+        }
         if (this.run?.status === "running")
           await this.review(
             "unexpected_page",
@@ -260,27 +283,22 @@ export class SurveyRunner {
         this.status("completed", "Survey completion detected.");
         return;
       }
-      if (this.panel && new URL(page.url).origin === new URL(settings.startUrl).origin) {
-        if (new URL(page.url).pathname !== new URL(settings.startUrl).pathname) {
-          await this.review(
-            "unexpected_page",
-            "Platform account or completion page requires manual review. No completion code is invented."
-          );
-          return;
+      if (
+        this.panel &&
+        new URL(page.url).origin === new URL(settings.startUrl).origin &&
+        new URL(page.url).pathname === new URL(settings.startUrl).pathname
+      ) {
+        const discovered = await this.panel.discoverOffers();
+        if (discovered.status === "ready") {
+          await this.navigateNext(page, discovered.offers[0]!.selector);
+          continue;
         }
-        const opened = await this.panel.openBestOffer();
-        if (opened.status === "review") {
-          await this.review("unexpected_page", `Survey handoff needs review: ${opened.reason}`);
-          return;
-        }
-        this.run.steps++;
-        this.answered.clear();
-        continue;
       }
       let questions: NormalizedQuestion[];
       try {
         questions = extractQuestions(page);
       } catch {
+        if (await this.waitForPage()) continue;
         await this.review(
           "unsupported_question",
           "The page has ambiguous or unsupported question controls."
@@ -291,10 +309,11 @@ export class SurveyRunner {
       if (question) {
         this.question = question;
         this.persist();
-        const decision = await engine.decide(question);
+        const prior = this.surveyAnswers.get(surveyQuestionKey(question));
+        const decision = prior ? engine.replay(question, prior) : await engine.decide(question);
         if (this.run.status !== "running") return;
         if (decision.status === "review") {
-          await this.review(decision.reason, decision.detail);
+          await this.review(decision.reason, decision.detail, decision.reviewHost);
           return;
         }
         const fresh = await this.session!.capturePageState();
@@ -316,7 +335,29 @@ export class SurveyRunner {
         continue;
       }
       this.question = null;
-      const next = navigation(page);
+      const destination = discoverSurveyDestination(
+        page,
+        this.explored,
+        this.panel
+          ? {
+              unit:
+                settings.platform === "branded"
+                  ? "points"
+                  : settings.currency === "GBP"
+                    ? "£"
+                    : "$",
+              minimumHourlyReward: settings.minimumHourlyReward,
+              maxDurationMinutes: settings.maxDurationMinutes
+            }
+          : undefined
+      );
+      if (destination) {
+        this.explored.add(destination.key);
+        await this.navigateNext(page, destination.selector);
+        continue;
+      }
+      const next = navigation(page) ?? (await engine.navigation(page));
+      if (this.run.status !== "running") return;
       if (next) {
         if (next.submit && !settings.autoSubmit) {
           await this.review(
@@ -350,12 +391,20 @@ export class SurveyRunner {
           continue;
         }
       }
+      if (await this.waitForPage()) continue;
       await this.review(
         "no_question_found",
         "No supported question, continuation button or survey offer was found."
       );
       return;
     }
+  }
+  private async waitForPage(): Promise<boolean> {
+    this.readWaitStarted ??= Date.now();
+    if (Date.now() - this.readWaitStarted >= 4000) return false;
+    this.status("running", "Waiting for the page's survey controls to finish loading…");
+    await delay(400);
+    return true;
   }
   private async guard(page: PageState): Promise<boolean> {
     let reason: ReviewReason | undefined;
@@ -370,10 +419,12 @@ export class SurveyRunner {
     else if (pageStopReason(page) === "captcha_detected") reason = "captcha_detected";
     else if (
       pageStopReason(page) === "authentication_required" ||
-      isAllowedUrl(
-        page.url,
-        new Set(this.settings!.authDomains),
-        this.settings!.navigationMode === "compatible"
+      (page.documentUrls ?? [page.url]).some((url) =>
+        isAllowedUrl(
+          url,
+          new Set(this.settings!.authDomains),
+          this.settings!.navigationMode === "compatible"
+        )
       ) ||
       !isAllowedUrl(
         page.url,
@@ -382,6 +433,12 @@ export class SurveyRunner {
       )
     )
       reason = "authentication_required";
+    else if (
+      /\/(?:account|profile|settings|payments?|cashout|redeem|withdraw)(?:\/|$)/i.test(
+        new URL(page.url).pathname
+      )
+    )
+      reason = "unexpected_page";
     else if (page.hasUnsupported) reason = "unsupported_question";
     else if (page.validationErrors?.length) reason = "unexpected_page";
     if (!reason) return false;
@@ -404,8 +461,10 @@ export class SurveyRunner {
   ): Promise<void> {
     if (this.run?.status !== "running") return;
     await executeAction(this.session!, action);
+    this.readWaitStarted = undefined;
     this.answered.add(binding(question));
     if (answer) {
+      this.surveyAnswers.set(surveyQuestionKey(question), answer);
       if (remember) this.engineFactory(this.settings!).remember(question, answer);
       this.store.recordAnswer(
         this.run.id,
@@ -432,6 +491,21 @@ export class SurveyRunner {
       );
       return;
     }
+    const fresh = await this.session!.capturePageState();
+    if (await this.guard(fresh)) return;
+    if (
+      pageSignature(fresh) !== before ||
+      !fresh.controls.some(
+        (control) => control.selector === selector && control.kind === "button" && !control.disabled
+      )
+    ) {
+      await this.review(
+        "unexpected_page",
+        "Page changed before navigation. Inspect it before resuming."
+      );
+      return;
+    }
+    this.readWaitStarted = undefined;
     this.lastNavigation = before;
     await executeAction(this.session!, { kind: "continue", selector });
     this.run.steps++;
@@ -452,7 +526,7 @@ export class SurveyRunner {
         "Page did not advance. Check for validation errors or an unsupported transition."
       );
   }
-  private async review(reason: ReviewReason, message: string): Promise<void> {
+  private async review(reason: ReviewReason, message: string, reviewHost?: string): Promise<void> {
     if (!this.run || this.run.status === "stopped") return;
     this.reason = reason;
     this.status("review", message);
@@ -462,6 +536,7 @@ export class SurveyRunner {
         await this.notify({
           reason,
           host:
+            reviewHost ??
             this.session.pendingNavigation?.()?.hostname ??
             new URL(this.session.currentUrl()).hostname
         });
@@ -534,9 +609,11 @@ function navigation(page: PageState): { selector: string; submit: boolean } | un
     (control) =>
       control.kind === "button" &&
       !control.disabled &&
-      /^(next|continue|submit|finish|complete survey)(\s*[→›»])?$/i.test(control.label.trim())
+      /^(next(?: page| question)?|continue(?: to (?:survey|study|next page))?|save (?:and|&) continue|begin(?: survey| study)?|start(?: survey| study| now)?|proceed|submit(?: answers| survey)?|finish|complete survey)(\s*[→›»])?$/i.test(
+        control.label.trim()
+      )
   );
-  if (controls.length > 1) throw new Error("Ambiguous navigation controls.");
+  if (controls.length > 1) return undefined;
   const control = controls[0];
   return control
     ? {
@@ -544,4 +621,18 @@ function navigation(page: PageState): { selector: string; submit: boolean } | un
         submit: /^(submit|finish|complete survey)/i.test(control.label)
       }
     : undefined;
+}
+
+function surveyQuestionKey(question: NormalizedQuestion): string {
+  return JSON.stringify([normalizeText(question.prompt), question.type]);
+}
+function answerMeaning(answer: ProviderDecision): string {
+  return JSON.stringify([
+    answer.selectedOption && normalizeText(answer.selectedOption),
+    answer.value && normalizeText(answer.value),
+    answer.selectedOptions?.map(normalizeText).sort(),
+    answer.matrix
+      ?.map((item) => [item.row, normalizeText(item.option)])
+      .sort((a, b) => a[0]!.localeCompare(b[0]!))
+  ]);
 }
