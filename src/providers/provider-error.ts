@@ -1,5 +1,14 @@
 /** Only fixed, user-safe messages cross the UI boundary, never remote bodies or tokens. */
-export class ProviderError extends Error {}
+export class ProviderError extends Error {
+  public constructor(
+    message: string,
+    public readonly reviewReason:
+      "provider_error" | "captcha_detected" | "authentication_required" = "provider_error",
+    public readonly reviewHost?: string
+  ) {
+    super(message);
+  }
+}
 export function providerHttpError(status: number): ProviderError {
   const reason =
     status === 401

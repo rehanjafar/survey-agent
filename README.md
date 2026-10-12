@@ -83,6 +83,31 @@ dashboard. Failed delivery leaves the run stopped for local review.
 
 ## 3. Connect ChatGPT and choose your platform
 
+**Use ordinary ChatGPT chats (no API key or OAuth model setup):**
+
+1. In **Connections & setup**, click **Open ordinary ChatGPT**. Sign in manually
+   in the separate browser window once. Choose a normal ChatGPT chat, not Work.
+2. Select **Automatic — ordinary ChatGPT chat** under Answering mode and **Save settings**.
+   This mode does not need the ChatGPT-plan model field. Confirm phone-alert delivery
+   using section 2 before starting.
+3. The agent automatically creates/reuses a dedicated normal conversation, sends
+   your current confirmed profile with the active question, reads the completed
+   response, and validates it before acting. It consults this chat before asking
+   you for an unresolved personal answer. It never invents missing personal facts.
+4. After restarting the app, its saved ChatGPT browser session is reopened when
+   needed. Finish any login/CAPTCHA yourself. An unsent draft is preserved, and a
+   timed-out message is never automatically resent.
+
+The current profile is sent to ChatGPT in this mode; normal ChatGPT data controls,
+chat history and usage limits apply. Corrected facts start a fresh dedicated chat
+so older profile values are not silently reused. Replies require a matching request
+ID, and personal answers must cite existing confirmed fact keys. No model-generated
+personal fact is added to your local profile automatically. This browser integration
+can need maintenance if ChatGPT changes its page controls; it stops rather than
+using private endpoints or evading verification.
+
+**Alternatively, use the existing ChatGPT-plan connection:**
+
 In **Connections & setup**:
 
 1. Click **Connect ChatGPT**. Complete the sign-in/authorization in the browser.
@@ -97,6 +122,8 @@ In **Connections & setup**:
    credits you enable in ChatGPT still apply; it is not a promise of unlimited/free
    inference. If access is unavailable, the app stops rather than enabling paid API
    billing. **Saved facts and manual review** remains an optional mode.
+   **For either ChatGPT mode, choose your platform:**
+
 4. Choose **Prolific**, **Branded Surveys**, or **Eureka**. This fills in the starting
    address and base domain. Leave **Allow the built-in survey-provider catalog** on
    for authorized third-party handoffs. It adds a bounded list of survey hosts and
@@ -119,6 +146,11 @@ GET destination for the current run; it never silently trusts a redirect or repl
 a blocked form submission. After stopping, add a recurring authorized provider to
 settings for future runs. Login-only hosts remain separate from answerable hosts.
 
+If using ChatGPT-plan mode, you can also enable **Ask my dedicated ordinary ChatGPT
+chat before alerting me** and save settings. Low-confidence answers, missing fact
+matches and provider failures then get one ordinary-chat attempt before a phone
+alert. Practice mode never sends profile data to either ChatGPT integration.
+
 ## 4. Add your facts, log in, and run
 
 1. Open **My profile** and add your own truthful facts and preferences. Confirm
@@ -134,6 +166,21 @@ settings for future runs. Login-only hosts remain separate from answerable hosts
    if phone delivery has been confirmed. Stop the run before changing settings.
 
 The dashboard finishes at detected survey completion; click Start for another run.
+Discovery also works in Generic mode: start at an authorized platform homepage and
+the agent can follow visible survey/study hubs, compare offer cards in the same
+reward unit, and open start/detail links. It uses observed links rather than fixed
+platform URLs. Ambiguous hubs or unrecognized designs still stop; arbitrary websites
+are not guaranteed. Known Prolific/Branded reward and duration filters remain active.
+
+Confirmed numeric facts can match response ranges: age 30 can select “25–34” without
+changing your age. Unresolvable or conflicting facts still need your input.
+The current survey also keeps a separate short-term answer history. Repeated
+normalized questions reuse their earlier validated answer, and a conflicting manual
+answer to that same question is stopped. This history resets when you start a new
+run; it does not become a personal fact. This deterministic check covers repeated
+questions, not every possible contradiction between differently worded questions.
+Checks against confirmed personal facts remain in place.
+
 Complex study instructions, consent, platform completion-code forms, unsupported
 widgets, ambiguous controls, and missing facts can require manual review. Never
 invent a completion code. Keep the computer awake and online during runs.

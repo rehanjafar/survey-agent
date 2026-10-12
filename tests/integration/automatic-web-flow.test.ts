@@ -59,3 +59,102 @@ it("loads a delayed embedded question, asks automatically, selects an observed n
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }, 15000);
+
+it("finds a survey hub, selects an offer and opens study details on an unnamed platform", async () => {
+  const server = createServer((request, response) => {
+    response.setHeader("content-type", "text/html");
+    const pages: Record<string, string> = {
+      "/": "<h1>Welcome</h1><a href='/surveys'>Available surveys</a><a href='/redeem'>Redeem rewards</a>",
+      "/surveys":
+        "<article>$1 · 30 min <a href='/slow'>Start survey</a></article><article>$2 · 5 min <a href='/details'>View study</a></article>",
+      "/details": "<h1>Study details</h1><a href='/question'>Begin study</a>",
+      "/question":
+        "<label for='age'>How old are you?</label><input id='age' type='number'><button onclick=\"location.href='/done'\">Next page</button>",
+      "/done": "<h1 data-survey-complete>Survey complete</h1>"
+    };
+    response.end(pages[request.url!] || "Wrong destination");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const directory = await mkdtemp(join(tmpdir(), "generic-discovery-"));
+  const store = new SqliteStore(join(directory, "agent.sqlite"));
+  store.upsertFact({ key: "age", value: "30", kind: "stable", established: true });
+  const provider = { decide: vi.fn() };
+  const runner = new SurveyRunner(
+    store,
+    (settings) => new PlaywrightChromiumBrowser({ allowedDomains: settings.allowedDomains }),
+    () => new AnswerDecisionEngine(store, provider),
+    directory
+  );
+  try {
+    await runner.start(
+      settingsSchema.parse({
+        platform: "generic",
+        startUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
+        allowedDomains: ["127.0.0.1"],
+        headless: true,
+        stepDelayMs: 250
+      })
+    );
+    await runner.idle();
+    expect(runner.state()).toMatchObject({ run: { status: "completed", steps: 5 } });
+    expect(provider.decide).not.toHaveBeenCalled();
+  } finally {
+    await runner.stop();
+    store.close();
+    await rm(directory, { recursive: true, force: true });
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}, 15000);
+
+it("reuses earlier answers within one survey and resets this memory for a new run", async () => {
+  const server = createServer((request, response) => {
+    response.setHeader("content-type", "text/html");
+    if (request.url === "/done")
+      return void response.end("<h1 data-survey-complete>Survey complete</h1>");
+    const next = request.url === "/" ? "/repeat" : "/done";
+    response.end(
+      `<fieldset><legend>Which option matches the example?</legend><label><input name="q" type="radio" value="A">A</label><label><input name="q" type="radio" value="B">B</label></fieldset><button onclick="location.href='${next}'">Next</button>`
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const directory = await mkdtemp(join(tmpdir(), "survey-memory-"));
+  const store = new SqliteStore(join(directory, "agent.sqlite"));
+  const provider = {
+    decide: vi.fn(async () => ({
+      selectedOption: "A",
+      confidence: 0.99,
+      reason: "Objective example"
+    }))
+  };
+  const runner = new SurveyRunner(
+    store,
+    (settings) => new PlaywrightChromiumBrowser({ allowedDomains: settings.allowedDomains }),
+    () => new AnswerDecisionEngine(store, provider),
+    directory
+  );
+  const settings = settingsSchema.parse({
+    platform: "generic",
+    startUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
+    allowedDomains: ["127.0.0.1"],
+    headless: true,
+    stepDelayMs: 250
+  });
+  try {
+    await runner.start(settings);
+    await runner.idle();
+    expect(runner.state().run?.status).toBe("completed");
+    expect(provider.decide).toHaveBeenCalledOnce();
+    expect(store.events().some((event) => String(event.detail).includes("survey_memory"))).toBe(
+      true
+    );
+    await runner.start(settings);
+    await runner.idle();
+    expect(runner.state().run?.status).toBe("completed");
+    expect(provider.decide).toHaveBeenCalledTimes(2);
+  } finally {
+    await runner.stop();
+    store.close();
+    await rm(directory, { recursive: true, force: true });
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}, 15000);

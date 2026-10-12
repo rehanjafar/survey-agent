@@ -79,6 +79,7 @@ function list(id, items) {
 }
 function fillSettings(config) {
   $("answer-provider").value = config.provider;
+  $("regular-chat-fallback").checked = config.regularChatFallback;
   $("chatgpt-model").value = config.chatgptModel;
   $("auth-domains").value = config.authDomains.join("\n");
   $("currency").value = config.currency;
@@ -169,6 +170,8 @@ async function refresh() {
     "events-list",
     state.events.map((entry) => item(pretty(entry.event), entry.detail, entry.created_at))
   );
+  $("regular-chat-status").textContent = state.regularChat.status;
+  $("open-regular-chat").disabled = state.regularChat.busy;
   $("chatgpt-status").textContent = state.chatgpt.status;
   $("connect-chatgpt").disabled = state.chatgpt.signingIn;
   $("chatgpt-signin").hidden = !state.chatgpt.signInUrl;
@@ -380,6 +383,7 @@ $("settings-form").addEventListener("submit", async (event) => {
   await post("settings", {
     ...state.settings,
     provider: $("answer-provider").value,
+    regularChatFallback: $("regular-chat-fallback").checked,
     chatgptModel: $("chatgpt-model").value.trim(),
     authDomains: $("auth-domains")
       .value.split(/[\s,]+/)
@@ -456,3 +460,5 @@ $("platform").addEventListener("change", () => {
     $("minimum-rate").value = "0";
   }
 });
+
+$("open-regular-chat").addEventListener("click", () => post("chatgpt/browser/open"));

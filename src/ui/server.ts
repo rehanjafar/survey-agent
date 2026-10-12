@@ -1,3 +1,4 @@
+import { ChatGPTBrowserProvider } from "../providers/chatgpt-browser-provider.js";
 import { ProviderError } from "../providers/provider-error.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -35,6 +36,12 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
   }
   const store = new SqliteStore(join(dataDirectory, "agent.sqlite"));
   store.recoverRuns();
+  const regularChat = new ChatGPTBrowserProvider(dataDirectory, () =>
+    store
+      .facts()
+      .filter((fact) => fact.established && fact.kind !== "temporary")
+      .map(({ key, value }) => ({ key, value }))
+  );
   const auth = new ChatGPTAuth(dataDirectory);
   let authStatus = (await auth.credentials())
     ? "Saved ChatGPT connection — use Test ChatGPT to verify"
@@ -58,8 +65,15 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     (config) =>
       new AnswerDecisionEngine(
         store,
-        config.provider === "chatgpt_plan" ? plan(config.chatgptModel) : new NoCostProvider(),
-        config.minimumConfidence
+        config.provider === "chatgpt_browser"
+          ? regularChat
+          : config.provider === "chatgpt_plan"
+            ? plan(config.chatgptModel)
+            : new NoCostProvider(),
+        config.minimumConfidence,
+        config.regularChatFallback && config.provider !== "chatgpt_browser"
+          ? regularChat
+          : undefined
       ),
     dataDirectory,
     async (event) => {
@@ -136,7 +150,8 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
         runs: store.runs(),
         events: store.events(),
         stats: store.stats(),
-        noCost: settings.provider === "manual",
+        noCost: settings.provider === "manual" && !settings.regularChatFallback,
+        regularChat: regularChat.status(),
         chatgpt: { status: authStatus, models, signingIn: Boolean(signingIn), signInUrl },
         phone: (await readPhoneSetup(dataDirectory)) ?? null,
         dataDirectory,
@@ -156,6 +171,9 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     try {
       const body = await readJson(request);
       switch (pathname) {
+        case "/api/chatgpt/browser/open":
+          await regularChat.open();
+          break;
         case "/api/chatgpt/login": {
           if (signingIn) throw new Error("Sign-in is already open in your browser.");
           authStatus = "Waiting for browser sign-in";
@@ -293,12 +311,14 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           break;
         }
         case "/api/start":
-          if (settings.provider === "chatgpt_plan") {
+          if (settings.provider !== "manual" || settings.regularChatFallback) {
             const phone = await readPhoneSetup(dataDirectory);
             if (!phone?.confirmed)
               throw new Error(
                 "Set up phone alerts, send a test, and click I received it before automatic runs."
               );
+          }
+          if (settings.provider === "chatgpt_plan") {
             if (!settings.chatgptModel || !(await plan().models()).includes(settings.chatgptModel))
               throw new Error(
                 "Connect ChatGPT, choose an available model, and save settings first."
@@ -312,6 +332,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
             startUrl: origin + "/mock/eureka",
             platform: "eureka",
             provider: "manual",
+            regularChatFallback: false,
             allowedDomains: ["127.0.0.1"],
             headless: true
           });
@@ -321,6 +342,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
           break;
         case "/api/stop":
           await runner.stop();
+          await regularChat.close();
           break;
         case "/api/resume": {
           const data = z
@@ -396,6 +418,7 @@ export async function createApplication(dataDirectory: string, initial?: AppSett
     },
     async close() {
       await runner.stop();
+      await regularChat.close();
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
         server.closeIdleConnections();

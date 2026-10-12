@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import { ProviderError } from "../../src/providers/provider-error.js";
 import { AnswerDecisionEngine } from "../../src/decision/answer-engine.js";
 import { SqliteStore } from "../../src/storage/sqlite-store.js";
 import type { PageState, InteractiveControl } from "../../src/browser/types.js";
@@ -27,6 +28,24 @@ const page: PageState = {
     button("Accept study consent", "#consent")
   ]
 };
+it("preserves ChatGPT CAPTCHA details when asking for navigation help", async () => {
+  const store = new SqliteStore(":memory:");
+  try {
+    await expect(
+      new AnswerDecisionEngine(store, {
+        decide: async () => {
+          throw new ProviderError(
+            "Complete verification manually",
+            "captcha_detected",
+            "chatgpt.com"
+          );
+        }
+      }).navigation(page)
+    ).rejects.toMatchObject({ reviewReason: "captcha_detected", reviewHost: "chatgpt.com" });
+  } finally {
+    store.close();
+  }
+});
 it("limits automatic navigation decisions to observed eligible labels without sending URLs or page text", async () => {
   const store = new SqliteStore(":memory:");
   const provider = {
