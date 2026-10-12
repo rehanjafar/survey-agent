@@ -25,6 +25,7 @@ export interface InteractiveControl {
   readonly question?: string;
   readonly questionPrompt?: string;
   readonly offerText?: string;
+  readonly offerId?: string;
   readonly group?: string;
   readonly inputType?: string;
   readonly min?: number;

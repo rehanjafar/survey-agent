@@ -86,6 +86,7 @@ function fillSettings(config) {
   $("max-duration").value = config.maxDurationMinutes;
   $("start-url").value = config.startUrl;
   $("platform").value = config.platform;
+  updateRewardLabels();
   $("ranking").value = config.rankBy;
   $("domains").value = config.allowedDomains.join("\n");
   $("survey-host-catalog").checked = config.surveyHostCatalog;
@@ -387,8 +388,19 @@ $("copy-topic").addEventListener("click", async () => {
     notify("Select the topic text and copy it manually.");
   }
 });
+function updateRewardLabels() {
+  const platform = $("platform").value;
+  const unit =
+    platform === "swagbucks" ? "SB" : platform === "branded" ? "points" : $("currency").value;
+  $("minimum-rate-label").textContent = `Minimum advertised reward (${unit}/hour)`;
+  $("currency").disabled = platform !== "prolific";
+  $("swagbucks-help").hidden = platform !== "swagbucks";
+}
+$("currency").addEventListener("change", updateRewardLabels);
 $("platform").addEventListener("change", () => {
+  updateRewardLabels();
   const presets = {
+    swagbucks: ["https://www.swagbucks.com/surveys", "swagbucks.com\nwww.swagbucks.com"],
     prolific: ["https://app.prolific.com/studies", "app.prolific.com"],
     branded: ["https://surveys.gobranded.com/", "surveys.gobranded.com"],
     eureka: ["https://eurekasurveys.com/surveys", "eurekasurveys.com"]
@@ -399,6 +411,7 @@ $("platform").addEventListener("change", () => {
     $("domains").value = preset[1];
     $("auth-domains").value = "";
     $("minimum-rate").value = "0";
+    $("ranking").value = "reward_per_minute";
   }
 });
 

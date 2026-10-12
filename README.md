@@ -1,6 +1,6 @@
 # Survey Agent
 
-A local dashboard for explicitly authorized survey work on **Prolific, Branded
+A local dashboard for explicitly authorized survey work on **Swagbucks, Prolific, Branded
 Surveys, Eureka, and supported generic survey pages**. It keeps browser logins and
 answer history on your computer, can use your eligible ChatGPT plan for
 supported answers, and sends **ntfy phone alerts** when you need to intervene.
@@ -43,7 +43,7 @@ while using the agent; use **Stop** in the dashboard before closing it.
 **Already downloaded an older version?** Stop its run and close its launcher first.
 Download/extract the new main ZIP into a new folder and launch it. Default dashboard
 settings, history, and Eureka login are kept outside the source folder and
-reused. Prolific and Branded each receive a separate saved browser profile. Do not
+reused. Swagbucks, Prolific, and Branded each receive a separate saved browser profile. Do not
 run the old and new copies simultaneously. If you previously set a custom
 `SURVEY_AGENT_DATA_DIR`, use the same absolute folder to retain that data.
 
@@ -121,7 +121,7 @@ In **Connections & setup**:
    Use ordinary-chat mode for context available in a selected ChatGPT conversation.
    **For either ChatGPT mode, choose your platform:**
 
-4. Choose **Prolific**, **Branded Surveys**, or **Eureka**. This fills in the starting
+4. Choose **Swagbucks**, **Prolific**, **Branded Surveys**, or **Eureka**. This fills in the starting
    address and base domain. Leave **Allow the built-in survey-provider catalog** on
    for authorized third-party handoffs. It adds a bounded list of survey hosts and
    their subdomains, including Qualtrics, Cint/Samplicio, Dynata, Gorilla, Pavlovia,
@@ -133,7 +133,8 @@ In **Connections & setup**:
    field; use a hostname such as `study.example.org` or an explicit `*.example.org` rule.
 5. For Prolific, choose USD or GBP. For Branded, the minimum advertised hourly reward
    is **points per hour**, not dollars. Set the maximum study duration if desired.
-   These filters apply to Prolific/Branded; Eureka has its own ranking selector.
+   For Swagbucks, the minimum is **SB per hour**. These filters apply to
+   Swagbucks/Prolific/Branded; Eureka has its own ranking selector.
 6. Keep the browser visible for initial login. Enable **Automatically submit completed
    surveys** only if you want supported final Submit/Finish controls to run without
    another confirmation. Click **Save settings**.
@@ -146,6 +147,39 @@ settings for future runs. Login-only hosts remain separate from answerable hosts
 If using ChatGPT-plan mode, you can also enable **Ask my dedicated ordinary ChatGPT
 chat before alerting me** and save settings. Low-confidence answers and provider failures then get one ordinary-chat attempt before a phone
 alert. Practice mode never sends questions to either ChatGPT integration.
+
+### Swagbucks setup
+
+New installations default to **Swagbucks** and `https://www.swagbucks.com/surveys`.
+Existing saved settings are preserved; select Swagbucks in Connections & setup to switch.
+Use **Displayed reward per minute** to prioritize SB per minute, set a minimum
+**SB/hour** and maximum survey duration, then save settings. For example, 80 SB in
+5 minutes is 960 SB/hour advertised. This is a ranking estimate, not credited income.
+
+The adapter reads visible SB amounts and durations from supported survey cards or
+rows, supports comma-separated SB rewards, ignores displayed hourly rates when
+reading total reward, and excludes ambiguous rewards and shopping/game offers.
+A stable survey ID prevents repeating an attempted card within a run even if its
+link changes. Returning to the offer list resets the prior survey's answer memory.
+No eligible offers, explicit screen-outs, or full surveys stop with a specific
+message instead of guessing a destination. Supported provider redirects, popup
+windows, and nested question frames use the existing browser flow.
+
+Check credited rewards in Swagbucks Activity. The application does not equate a
+screen-out, advertised reward, or completion page with paid SB. Swagbucks' public
+[reward guidance](https://help.swagbucks.com/hc/en-us/articles/205642094-In-what-cases-will-I-NOT-receive-SB-for-doing-surveys)
+explains reasons responses may not receive credit. No live signed-in Swagbucks
+layout has been validated; tests use local representative layouts.
+
+All ChatGPT prompt paths start with:
+
+> Select the correct answer. If there is no correct answer or not enough context, select the most appropriate answer. You must select at least one answer.
+
+Responses still use the structured answer format and confidence validation. The
+preface improves guidance; it cannot guarantee model output or supply missing
+personal context. ChatGPT-plan requests use the supported `instructions` field
+rather than a system-role input, following the
+[Sign in with ChatGPT request requirements](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
 
 ## 4. Log in and run
 
@@ -160,7 +194,7 @@ Discovery also works in Generic mode: start at an authorized platform homepage a
 the agent can follow visible survey/study hubs, compare offer cards in the same
 reward unit, and open start/detail links. It uses observed links rather than fixed
 platform URLs. Ambiguous hubs or unrecognized designs still stop; arbitrary websites
-are not guaranteed. Known Prolific/Branded reward and duration filters remain active.
+are not guaranteed. Known Swagbucks/Prolific/Branded reward and duration filters remain active.
 
 The current survey also keeps a separate short-term answer history. Repeated
 normalized questions reuse their earlier validated answer, and a conflicting manual
@@ -232,7 +266,7 @@ dashboard settings. See [advanced commands](docs/advanced.md) if you still use t
 
 The dashboard supports recognized native radio buttons, checkboxes, dropdowns, text,
 numeric inputs, scales, labelled matrices, and conditional questions. Embedded
-survey frames and custom controls may stop. Prolific/Branded ranking compares
+survey frames and custom controls may stop. Swagbucks/Prolific/Branded ranking compares
 advertised reward per minute within one unit; actual earnings depend on eligibility,
 time, approval, and availability. Displayed rewards are not recorded as paid income.
 Live platform layouts and account eligibility remain unverified.

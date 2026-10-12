@@ -1,3 +1,5 @@
+import { answerPreface } from "../../src/providers/decision-schema.js";
+import { chatPrompt } from "../../src/providers/no-cost-provider.js";
 import { expect, it } from "vitest";
 import {
   browserChatPrompt,
@@ -33,6 +35,8 @@ it("sends only the active question and asks ChatGPT to use context actually avai
     requestId: "one",
     activeQuestion: question
   });
+  expect(prompt.startsWith(answerPreface)).toBe(true);
+  expect(chatPrompt(question).startsWith(answerPreface)).toBe(true);
   expect(prompt).toContain("personal context actually available");
   expect(prompt).toContain("never invent");
   expect(prompt).not.toContain("confirmedProfile");

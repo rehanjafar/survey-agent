@@ -15,13 +15,15 @@ export function defaultDataDirectory(
 }
 export const settingsSchema = z
   .object({
-    startUrl: z.string().url().default("https://eurekasurveys.com/surveys"),
+    startUrl: z.string().url().default("https://www.swagbucks.com/surveys"),
     allowedDomains: z
       .array(z.string().refine(validateDomainRule))
       .min(1)
       .max(100)
-      .default(["eurekasurveys.com", "www.eurekasurveys.com", "localhost", "127.0.0.1"]),
-    platform: z.enum(["generic", "eureka", "prolific", "branded"]).default("eureka"),
+      .default(["swagbucks.com", "www.swagbucks.com"]),
+    platform: z
+      .enum(["generic", "eureka", "prolific", "branded", "swagbucks"])
+      .default("swagbucks"),
     surveyHostCatalog: z.boolean().default(true),
     navigationMode: z.enum(["compatible", "strict"]).default("compatible"),
     provider: z.enum(["manual", "chatgpt_plan", "chatgpt_browser"]).default("manual"),

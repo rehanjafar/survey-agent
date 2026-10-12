@@ -164,3 +164,69 @@ it("does not repeat a start click when the study detail page stays unchanged", a
   });
   expect(session.clickAndDetectNavigation).toHaveBeenCalledTimes(2);
 });
+
+describe("Swagbucks SB offers", () => {
+  const swagbucks: PanelOptions = {
+    ...options,
+    platform: "swagbucks",
+    startUrl: "https://www.swagbucks.com/surveys",
+    allowedHosts: ["www.swagbucks.com"]
+  };
+  it("ranks SB per minute and supports highest-total-reward mode", () => {
+    const cards = [control("Survey 300 SB 30 min", "long"), control("Survey 80 SB 5 min", "short")];
+    expect(rankPanelOffers(cards, swagbucks).map((o) => o.reward)).toEqual([80, 300]);
+    expect(rankPanelOffers(cards, { ...swagbucks, rankBy: "reward" }).map((o) => o.reward)).toEqual(
+      [300, 80]
+    );
+    expect(
+      rankPanelOffers(cards, { ...swagbucks, minimumHourlyReward: 900, maxDurationMinutes: 10 })
+    ).toMatchObject([{ unit: "SB", reward: 80, hourlyReward: 960 }]);
+  });
+  it.each([
+    "Survey 1,200 SB 10 min",
+    "Survey SB 1,200 10 min",
+    "Survey 1,200 SB 7,200 SB/hr 10 min",
+    "Survey SB 1,200 SB 7,200/hr 10 min"
+  ])("parses %s without treating the hourly rate as the reward", (text) => {
+    expect(parsePanelOffer(control(text), swagbucks)).toMatchObject({
+      reward: 1200,
+      unit: "SB",
+      hourlyReward: 7200
+    });
+  });
+  it.each([
+    "Survey 100 points 5 min",
+    "Survey $1 5 min",
+    "Survey 100 SB $1 5 min",
+    "Survey up to 500 SB 5 min",
+    "Survey 100 SB 200 SB 5 min",
+    "Survey 100 SB bonus 5 min",
+    "Install game 100 SB 5 min",
+    "Survey 100 SB expired 5 min"
+  ])("excludes ambiguous or non-survey offer %s", (text) => {
+    expect(parsePanelOffer(control(text), swagbucks)).toBeUndefined();
+  });
+  it("keeps distinct survey IDs and prevents retries when a card is rerendered", async () => {
+    const first = { ...control("Survey 80 SB 5 min", "first"), offerId: "survey-1" };
+    const second = { ...control("Survey 80 SB 5 min", "second"), offerId: "survey-2" };
+    expect(rankPanelOffers([first, second], swagbucks)).toHaveLength(2);
+    const session = {
+      capturePageState: vi.fn(async () =>
+        state(
+          [
+            { ...first, selector: "#new", href: "https://www.swagbucks.com/survey?token=new" },
+            second
+          ],
+          swagbucks.startUrl
+        )
+      )
+    } as unknown as BrowserSession;
+    const adapter = new PanelSurveyAdapter(session, swagbucks);
+    adapter.markAttempted("swagbucks:survey-1");
+    expect(await adapter.discoverOffers()).toMatchObject({
+      status: "ready",
+      offers: [{ key: "swagbucks:survey-2" }]
+    });
+    expect(rankPanelOffers([first, { ...first, selector: "#other" }], swagbucks)).toEqual([]);
+  });
+});

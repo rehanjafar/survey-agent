@@ -1,3 +1,4 @@
+import { swagbucksOutcome } from "../platforms/swagbucks/outcome.js";
 import { normalizeText } from "../normalization/question-normalizer.js";
 import { ProviderError } from "../providers/provider-error.js";
 import { discoverSurveyDestination } from "../platforms/generic/discovery.js";
@@ -33,6 +34,7 @@ export interface RunnerState {
 }
 export class SurveyRunner {
   private panel: PanelSurveyAdapter | undefined;
+  private panelOfferActive = false;
   private run: RunRecord | null = null;
   private question: NormalizedQuestion | null = null;
   private reason: string | null = null;
@@ -79,6 +81,7 @@ export class SurveyRunner {
     this.settings = { ...settings };
     this.answered.clear();
     this.explored.clear();
+    this.panelOfferActive = false;
     this.surveyAnswers.clear();
     this.lastNavigation = undefined;
     this.lastPageUrl = undefined;
@@ -98,9 +101,12 @@ export class SurveyRunner {
       this.driver = this.makeDriver(settings);
       this.session = await this.driver.createSession();
       this.panel =
-        settings.platform === "prolific" || settings.platform === "branded"
+        settings.platform === "prolific" ||
+        settings.platform === "branded" ||
+        settings.platform === "swagbucks"
           ? new PanelSurveyAdapter(this.session, {
               platform: settings.platform,
+              rankBy: settings.rankBy,
               startUrl: settings.startUrl,
               allowedHosts: settings.allowedDomains,
               currency: settings.currency,
@@ -279,6 +285,18 @@ export class SurveyRunner {
         this.answered.clear();
         this.lastPageUrl = page.url;
       }
+      if (settings.platform === "swagbucks") {
+        const outcome = swagbucksOutcome(page);
+        if (outcome) {
+          await this.review(
+            outcome,
+            outcome === "survey_screened_out"
+              ? "This survey screened you out. No completion or SB credit was assumed. Review the dashboard before starting another survey."
+              : "This survey is full or unavailable. Review the dashboard before starting another survey."
+          );
+          return;
+        }
+      }
       if (page.complete) {
         this.status("completed", "Survey completion detected.");
         return;
@@ -286,12 +304,29 @@ export class SurveyRunner {
       if (
         this.panel &&
         new URL(page.url).origin === new URL(settings.startUrl).origin &&
-        new URL(page.url).pathname === new URL(settings.startUrl).pathname
+        new URL(page.url).pathname.replace(/\/+$/, "") ===
+          new URL(settings.startUrl).pathname.replace(/\/+$/, "")
       ) {
+        if (this.panelOfferActive) {
+          this.surveyAnswers.clear();
+          this.answered.clear();
+          this.lastNavigation = undefined;
+          this.panelOfferActive = false;
+        }
         const discovered = await this.panel.discoverOffers();
         if (discovered.status === "ready") {
+          this.panel.markAttempted(discovered.offers[0]!.key);
+          this.panelOfferActive = true;
           await this.navigateNext(page, discovered.offers[0]!.selector);
           continue;
+        }
+        if (settings.platform === "swagbucks") {
+          if (await this.waitForPage()) continue;
+          await this.review(
+            "no_matching_offers",
+            "No unattempted Swagbucks surveys match your SB/hour and duration filters. Check the offers or adjust your settings."
+          );
+          return;
         }
       }
       let questions: NormalizedQuestion[];
@@ -341,11 +376,13 @@ export class SurveyRunner {
         this.panel
           ? {
               unit:
-                settings.platform === "branded"
-                  ? "points"
-                  : settings.currency === "GBP"
-                    ? "£"
-                    : "$",
+                settings.platform === "swagbucks"
+                  ? "SB"
+                  : settings.platform === "branded"
+                    ? "points"
+                    : settings.currency === "GBP"
+                      ? "£"
+                      : "$",
               minimumHourlyReward: settings.minimumHourlyReward,
               maxDurationMinutes: settings.maxDurationMinutes
             }

@@ -6,13 +6,15 @@ export interface PanelOffer {
   readonly selector: string;
   readonly key: string;
   readonly title: string;
+  readonly cardKey: string;
   readonly reward: number;
-  readonly unit: "USD" | "GBP" | "points";
+  readonly unit: "USD" | "GBP" | "points" | "SB";
   readonly minutes: number;
   readonly hourlyReward: number;
 }
 export interface PanelOptions {
-  readonly platform: "prolific" | "branded";
+  readonly platform: "prolific" | "branded" | "swagbucks";
+  readonly rankBy?: "reward_per_minute" | "reward";
   readonly startUrl: string;
   readonly allowedHosts: readonly string[];
   readonly currency: "USD" | "GBP";
@@ -28,18 +30,24 @@ export function parsePanelOffer(
   if (control.kind !== "button" || control.disabled) return undefined;
   const text = control.offerText || [control.label, control.ariaLabel].filter(Boolean).join(" ");
   if (
-    /\b(full|no places|0 places|unavailable|completed|invite friends|referral|cash out|bonus|boost)\b/i.test(
+    /\b(full|no places|0 places|unavailable|completed|invite friends|referral|cash out|bonus|boost|up to|cashback|shop|buy|purchase|game|install|trial|disqualified|expired)\b/i.test(
       text
     )
   )
     return undefined;
   // Reject arbitrary account/reward buttons even when a surrounding card mentions money.
   const action = `${control.label} ${control.ariaLabel}`.trim();
-  if (!control.href && !/\b(study|survey|start|participate|take|view)\b/i.test(action))
+  if (
+    !control.href &&
+    !control.offerId &&
+    !/\b(study|survey|start|participate|take|view)\b/i.test(action)
+  )
     return undefined;
   if (
     control.href &&
-    /\b(login|logout|settings|cashout|redeem|referral|help)\b/i.test(control.href)
+    /\b(login|logout|settings|cashout|redeem|referral|help|shop|discover|games|purchase|rewards-store)\b/i.test(
+      control.href
+    )
   )
     return undefined;
   const durations = [...text.matchAll(/\b(\d+(?:\.\d+)?)\s*(?:mins?|minutes?)\b/gi)].map((match) =>
@@ -48,23 +56,32 @@ export function parsePanelOffer(
   if (!durations.length || new Set(durations).size !== 1) return undefined;
   const minutes = durations[0]!;
   if (minutes <= 0 || minutes > options.maxDurationMinutes) return undefined;
-  const unit = options.platform === "branded" ? "points" : options.currency;
+  const unit =
+    options.platform === "swagbucks"
+      ? "SB"
+      : options.platform === "branded"
+        ? "points"
+        : options.currency;
   // Hourly rates shown alongside the total reward are not the reward itself.
   const withoutHourlyRates = text.replace(
-    /(?:[$£]\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:USD|GBP|points|pts))\s*(?:\/\s*(?:hr|hour|h)\b|per\s+hour\b)/gi,
+    /(?:[$£]\s*\d+(?:\.\d+)?|\bSB\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:USD|GBP|points|pts|SB))\s*(?:\/\s*(?:hr|hour|h)\b|per\s+hour\b)/gi,
     ""
   );
   const pattern =
-    unit === "points"
-      ? /\b(\d+(?:\.\d+)?)\s*(?:points|pts)\b/gi
-      : unit === "USD"
-        ? /\$\s*(\d+(?:\.\d{1,2})?)|\b(\d+(?:\.\d{1,2})?)\s*USD\b/gi
-        : /£\s*(\d+(?:\.\d{1,2})?)|\b(\d+(?:\.\d{1,2})?)\s*GBP\b/gi;
+    unit === "SB"
+      ? /\b(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*SB\b|\bSB\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\b/gi
+      : unit === "points"
+        ? /\b(\d+(?:\.\d+)?)\s*(?:points|pts)\b/gi
+        : unit === "USD"
+          ? /\$\s*(\d+(?:\.\d{1,2})?)|\b(\d+(?:\.\d{1,2})?)\s*USD\b/gi
+          : /£\s*(\d+(?:\.\d{1,2})?)|\b(\d+(?:\.\d{1,2})?)\s*GBP\b/gi;
   // A card containing both currencies needs review, not an implicit exchange rate.
   if ((unit === "USD" && /£|\bGBP\b/.test(text)) || (unit === "GBP" && /\$|\bUSD\b/.test(text)))
     return undefined;
+  if (unit === "SB" && /[$£]|\b(?:USD|GBP|points|pts)\b/i.test(withoutHourlyRates))
+    return undefined;
   const amounts = [...withoutHourlyRates.matchAll(pattern)].map((match) =>
-    Number(match[1] ?? match[2])
+    Number((match[1] ?? match[2])!.replaceAll(",", ""))
   );
   if (!amounts.length || new Set(amounts).size !== 1) return undefined;
   const reward = amounts[0]!;
@@ -73,8 +90,11 @@ export function parsePanelOffer(
     return undefined;
   return {
     selector: control.selector,
-    key: control.href || `${control.id || control.selector}:${text}`,
+    key: control.offerId
+      ? `${options.platform}:${control.offerId}`
+      : control.href || `${control.id || control.selector}:${text}`,
     title: text,
+    cardKey: control.offerId || text,
     reward,
     unit,
     minutes,
@@ -91,11 +111,14 @@ export function rankPanelOffers(
     .filter((offer): offer is PanelOffer => !!offer);
   // Multiple actionable controls in one card are ambiguous; never guess which starts it.
   const counts = new Map<string, number>();
-  for (const offer of offers) counts.set(offer.title, (counts.get(offer.title) ?? 0) + 1);
+  for (const offer of offers) counts.set(offer.cardKey, (counts.get(offer.cardKey) ?? 0) + 1);
   return offers
-    .filter((offer) => counts.get(offer.title) === 1)
+    .filter((offer) => counts.get(offer.cardKey) === 1)
     .sort(
-      (a, b) => b.hourlyReward - a.hourlyReward || a.minutes - b.minutes || b.reward - a.reward
+      (a, b) =>
+        (options.rankBy === "reward" ? b.reward - a.reward : b.hourlyReward - a.hourlyReward) ||
+        a.minutes - b.minutes ||
+        b.reward - a.reward
     );
 }
 
@@ -107,6 +130,9 @@ export class PanelSurveyAdapter {
     private readonly options: PanelOptions
   ) {
     this.allowed = new Set(options.allowedHosts);
+  }
+  public markAttempted(key: string): void {
+    this.attempted.add(key);
   }
   private review(state: PageState): string | undefined {
     return !isAllowedUrl(state.url, this.allowed) ? "external_redirect" : pageStopReason(state);
@@ -134,7 +160,7 @@ export class PanelSurveyAdapter {
       const discovered = await this.discoverOffers();
       if (discovered.status === "review") return discovered;
       const offer = discovered.offers[0]!;
-      this.attempted.add(offer.key);
+      this.markAttempted(offer.key);
       let selector = offer.selector;
       let pageUrl = this.options.startUrl;
       const clicked = new Set<string>();

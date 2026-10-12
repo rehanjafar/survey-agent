@@ -7,7 +7,7 @@ import { platformPresets } from "../platforms/panels/presets.js";
 const domains = z.array(z.string().refine(validateDomainRule, "Use a hostname or *.hostname"));
 export const settingsSchema = z
   .object({
-    platform: z.enum(["eureka", "prolific", "branded"]),
+    platform: z.enum(["eureka", "prolific", "branded", "swagbucks"]),
     startUrl: z.url(),
     authDomains: domains.default([]),
     surveyDomains: domains.default([]),

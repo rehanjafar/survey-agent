@@ -35,8 +35,8 @@ export async function guidedSetup(
     "Setup saves your choices. No .env editing is needed. Use only studies covered by your authorization."
   );
   const platform = (await ask(
-    "Platform: prolific, branded, or eureka",
-    existing?.platform ?? "prolific",
+    "Platform: swagbucks, prolific, branded, or eureka",
+    existing?.platform ?? "swagbucks",
     (value) => Object.hasOwn(platformPresets, value)
   )) as Platform;
   const preset = platformPresets[platform];
@@ -102,7 +102,7 @@ export async function guidedSetup(
           (value) => ["USD", "GBP"].includes(value)
         )) as "USD" | "GBP")
       : "USD";
-  const unit = platform === "branded" ? "points" : currency;
+  const unit = platform === "swagbucks" ? "SB" : platform === "branded" ? "points" : currency;
   const minimumHourlyReward = Number(
     await ask(
       `Minimum advertised ${unit} per hour (0 accepts all)`,

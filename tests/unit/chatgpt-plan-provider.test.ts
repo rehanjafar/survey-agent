@@ -1,3 +1,4 @@
+import { answerPreface } from "../../src/providers/decision-schema.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ChatGPTPlanProvider,
@@ -67,6 +68,14 @@ describe("ChatGPT plan provider", () => {
       stream: true,
       model: "account-model"
     });
+    const payload = JSON.parse(call[1].body as string);
+    expect(payload.instructions.startsWith(answerPreface)).toBe(true);
+    expect(payload.input).toEqual([
+      {
+        role: "user",
+        content: JSON.stringify({ question: "Which?", type: "single_choice", options: ["A"] })
+      }
+    ]);
     expect(call[1].headers).toMatchObject({ authorization: "Bearer test-oauth" });
   });
   it("does not retry or switch billing on HTTP errors", async () => {

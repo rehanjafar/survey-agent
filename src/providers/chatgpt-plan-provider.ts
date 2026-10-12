@@ -87,13 +87,8 @@ export class ChatGPTPlanProvider implements LlmProvider {
         model: this.model,
         store: false,
         stream: true,
-        input: [
-          {
-            role: "system",
-            content: instructions
-          },
-          { role: "user", content: JSON.stringify(question) }
-        ]
+        instructions,
+        input: [{ role: "user", content: JSON.stringify(question) }]
       })
     });
     if (!response.ok || !response.body) throw providerHttpError(response.status);

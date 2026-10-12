@@ -38,6 +38,10 @@ it("walks through phone setup in the dashboard and preserves the topic without s
       reason: "test_notification",
       host: "local-agent"
     });
+    await page.locator("#platform").selectOption("swagbucks");
+    expect(await page.locator("#start-url").inputValue()).toBe("https://www.swagbucks.com/surveys");
+    expect(await page.locator("#minimum-rate-label").textContent()).toContain("SB/hour");
+    expect(await page.locator("#currency").isDisabled()).toBe(true);
     await page.locator("#platform").selectOption("prolific");
     expect(await page.locator("#start-url").inputValue()).toBe("https://app.prolific.com/studies");
     expect(errors).toEqual([]);

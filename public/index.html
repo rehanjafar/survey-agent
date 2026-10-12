@@ -336,6 +336,7 @@
             <div>
               <label for="platform">Website adapter</label
               ><select id="platform">
+                <option value="swagbucks">Swagbucks</option>
                 <option value="eureka">Eureka Surveys</option>
                 <option value="prolific">Prolific</option>
                 <option value="branded">Branded Surveys</option>
@@ -350,6 +351,11 @@
               </select>
             </div>
           </div>
+          <p id="swagbucks-help" class="hint">
+            Swagbucks surveys are ranked by advertised SB per minute. SB are points, not cash
+            received. Sign in once in the survey browser. Screen-outs and unavailable offers stop
+            for review; check Swagbucks Activity for credited rewards.
+          </p>
           <label for="domains">Allowed domains, one per line</label
           ><textarea id="domains" rows="4" required></textarea>
           <p class="hint">
@@ -372,12 +378,12 @@
               </select>
             </div>
             <div>
-              <label for="minimum-rate"
-                >Minimum advertised hourly reward (Branded: points/hour)</label
+              <label for="minimum-rate" id="minimum-rate-label"
+                >Minimum advertised reward (SB/hour)</label
               ><input id="minimum-rate" type="number" min="0" step="any" />
             </div>
             <div>
-              <label for="max-duration">Maximum Prolific/Branded study minutes</label
+              <label for="max-duration">Maximum survey minutes</label
               ><input id="max-duration" type="number" min="1" />
             </div>
           </div>

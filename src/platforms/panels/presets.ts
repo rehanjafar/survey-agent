@@ -1,6 +1,11 @@
-export type Platform = "eureka" | "prolific" | "branded";
+export type Platform = "eureka" | "prolific" | "branded" | "swagbucks";
 
 export const platformPresets = {
+  swagbucks: {
+    name: "Swagbucks",
+    url: "https://www.swagbucks.com/surveys",
+    hosts: ["swagbucks.com", "www.swagbucks.com"]
+  },
   eureka: {
     name: "Eureka",
     url: "https://eurekasurveys.com/surveys",

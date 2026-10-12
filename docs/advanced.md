@@ -129,6 +129,14 @@ questions, nested survey frames, and arbitrary multi-question layouts need a spe
 adapter before automatic execution. It does not claim universal survey coverage or
 record inferred earnings as actual payment. Test only against local mocks.
 
+### Swagbucks
+
+Choose `swagbucks` in guided setup (the default for new setups). This saves
+`https://www.swagbucks.com/surveys` and a dedicated `profiles/swagbucks` browser
+session. Enter only authorized external survey and login hosts. The panel adapter
+ranks in SB per minute; the minimum-rate prompt is SB/hour. Explicit screen-outs
+and full surveys stop for review without incrementing completed-survey counts.
+
 ## Authorized navigation model
 
 Exact host rules restrict navigation to that host. Explicit `*.example.test` rules
